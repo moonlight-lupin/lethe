@@ -52,7 +52,7 @@ from lethe import (
 # invert under dark mode (`body.body--dark`, toggled from the header) with no
 # markup changes — exactly the token architecture the two sibling apps use.
 PRIMARY = "#6a4690"  # dusk amethyst — Lethe's accent within the family
-APP_VERSION = "0.1.0"
+APP_VERSION = "1.0.0"
 REPO_URL = "https://github.com/moonlight-lupin/lethe"
 
 ui.colors(primary=PRIMARY, secondary="#4a3066", accent="#7d56a6",
