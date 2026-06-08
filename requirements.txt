@@ -2,4 +2,5 @@ nicegui
 python-docx
 openpyxl
 pypdf
+pdfplumber
 cryptography

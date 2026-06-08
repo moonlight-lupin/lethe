@@ -40,8 +40,13 @@ river of oblivion, whose waters made souls forget.
 - **Pattern detection:** emails, phone numbers and account numbers out of the box.
 - **Stable tokens:** the same name always maps to the same token — consistently
   across every file in a batch.
-- **Format-preserving:** Word stays Word, Excel stays Excel (formulas preserved);
-  PDFs come back as a de-identified Word file (the text is what you feed an AI anyway).
+- **Format-preserving:** Word stays Word, Excel stays Excel (formulas preserved).
+  PDFs are rebuilt as a de-identified Word file (via **pdfplumber**) — **tables become
+  real Word tables**, and each source page gets a **`Page N` heading** so downstream
+  tools can quote against the *original* PDF pages.
+- **Image-page warning:** Lethe flags PDF pages that are scans/figures with no
+  extractable text — names rendered as pixels can't be detected (there's no OCR), so
+  the gap is made visible rather than silent.
 - **Encrypted vault:** each job's token→name map is sealed with your passphrase
   (PBKDF2 → Fernet). Lose the passphrase and that job is unrecoverable *by design*.
 - **Review before anything is written:** Lethe shows every proposed redaction,
@@ -136,9 +141,13 @@ winget install --id JRSoftware.InnoSetup -e         # one-time
 - **The review step is the safety net, not the AI.** The NLP *suggestions* are a
   convenience to help you spot gaps — treat the dictionary as the source of truth and
   always eyeball the review list.
-- **Scanned / image-only PDFs won't work** — there's no OCR. Only PDFs with real text.
-- **Images, logos, charts, text boxes, metadata, comments and tracked changes are not
-  read** — a name inside a picture or in document metadata is not detected.
+- **No OCR.** Names rendered as pixels — in a scan, a chart, a logo, a signature image —
+  can't be read or redacted. Lethe **flags** image-based PDF pages so you know to check
+  them, but it cannot redact text inside an image.
+- **PDF page numbers:** the output's `Page N` headings refer to the *original* PDF pages
+  (for citation); the Word file's own rendered pagination won't match the source.
+- **Text in shapes, text boxes, embedded objects, metadata, comments and tracked
+  changes is not read** — these may still carry names.
 - In **Word**, a line containing a redacted name keeps its text but may lose fine
   in-line formatting (bold/italic within that line). Correct redaction is prioritised
   over formatting fidelity.

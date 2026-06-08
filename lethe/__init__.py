@@ -24,7 +24,7 @@ from .core import (  # noqa: E402
     build_restorer,
     detect,
 )
-from .docio import extract_text, file_kind, redact_document  # noqa: E402
+from .docio import extract_text, file_kind, pdf_warnings, redact_document  # noqa: E402
 from .store import load_entities, merge_entities, save_entities  # noqa: E402
 
 __all__ = [
@@ -35,7 +35,7 @@ __all__ = [
     "Entity", "assign_tokens", "build_replacer", "build_restorer", "detect",
     "_whole_word_regex",
     # document I/O
-    "extract_text", "file_kind", "redact_document",
+    "extract_text", "file_kind", "pdf_warnings", "redact_document",
     # entity dictionary
     "load_entities", "merge_entities", "save_entities",
 ]

@@ -39,6 +39,7 @@ from lethe import (
     load_entities,
     merge_entities,
     nlp_suggester,
+    pdf_warnings,
     redact_document,
     save_entities,
     vault,
@@ -210,6 +211,10 @@ body.body--dark .meander{opacity:.45;background-image:url("__MEANDER_DARK__");}
 .doc-preview{white-space:pre-wrap;word-break:break-word;font-size:13.5px;line-height:1.75;
   max-height:62vh;overflow:auto;background:var(--panel)!important;border:1px solid var(--border);
   border-radius:var(--r);padding:16px 18px;color:var(--text);font-family:var(--font-serif);}
+.pdf-warn{background:color-mix(in srgb,var(--warn) 14%,var(--panel));
+  border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn);
+  border-radius:var(--r-sm);padding:9px 13px;margin-bottom:10px;font-size:12.5px;line-height:1.5;}
+.pdf-warn b{color:var(--warn);}
 mark.hl{border-radius:3px;padding:0 1px;color:inherit;}
 mark.hl-PERSON{background:#e7dcf2;}
 mark.hl-COUNTERPARTY{background:#f0e2c4;}
@@ -320,7 +325,8 @@ Everything stays in the app's own folder — nothing is uploaded:
 The tool reads the **text** of your files. It does **not** touch:
 - **Images & logos** — a counterparty logo, a signature image, a scanned stamp, or any
   name *inside a picture* is not detected (there is no image reading / OCR).
-- **Scanned / image-only PDFs** — no selectable text, so nothing is found.
+- **Scanned / image-only PDFs** — no selectable text, so nothing is found. Lethe
+  **flags** image-based pages so you know to check them, but it can't read them (no OCR).
 - Text in **shapes, text boxes, charts or embedded objects**, and document
   **metadata, comments or tracked changes** — these may still carry names.
 - Amounts, dates and ID numbers — unless they match the email / phone / account patterns.
@@ -331,7 +337,8 @@ review are the real safeguard.
 ### Good to know
 - **Keep your passphrase + Job ID together** — you need both to reverse a job.
 - A **blank passphrase** means the reversal key is saved unprotected.
-- **PDFs** come back as Word; **spreadsheets** keep their format.
+- **PDFs** come back as Word — tables stay tables, and each page gets a *Page N*
+  heading (matching the original PDF) so you can cite pages. Image/scan pages are flagged.
 - Nothing leaves this machine — no internet, no cloud.
 """
 
@@ -675,7 +682,14 @@ def build_deidentify_panel():
             text = extract_text(f["data"], f["kind"])
             if f["kind"] == "xlsx":
                 text = "(spreadsheet shown as text)\n\n" + text
-            preview_html.content = _preview_html(text, state["items"])
+            banner = ""
+            warns = f.get("warnings")
+            if warns:
+                pages = ", ".join(str(w["page"]) for w in warns)
+                banner = (f'<div class="pdf-warn">⚠ Page(s) {_html.escape(pages)} look image-based — '
+                          "their text isn't extracted (no OCR), so any names on them are "
+                          "<b>not redacted</b>. Check those pages in the original PDF.</div>")
+            preview_html.content = banner + _preview_html(text, state["items"])
 
         def on_preview_file(e):
             if e.value in [f["name"] for f in files]:
@@ -699,10 +713,25 @@ def build_deidentify_panel():
 
         async def on_file(e):
             f = e.file
-            files.append({"name": f.name, "kind": file_kind(f.name) or "txt", "data": await f.read()})
+            data = await f.read()
+            kind = file_kind(f.name) or "txt"
+            entry = {"name": f.name, "kind": kind, "data": data}
+            if kind == "pdf":
+                try:
+                    entry["warnings"] = pdf_warnings(data)
+                except Exception:
+                    entry["warnings"] = []
+            files.append(entry)
             render_files.refresh()
             run_detection()
-            ui.notify(f"Added {f.name}", color="primary")
+            warns = entry.get("warnings")
+            if warns:
+                pages = ", ".join(str(w["page"]) for w in warns)
+                ui.notify(f"⚠ {f.name}: page(s) {pages} look image-based — text/names there "
+                          "can't be detected (no OCR). Review them in the original PDF.",
+                          type="warning", multi_line=True, timeout=10000)
+            else:
+                ui.notify(f"Added {f.name}", color="primary")
 
         def on_sample():
             files.clear()
