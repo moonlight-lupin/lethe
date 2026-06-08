@@ -172,7 +172,7 @@ def _suggestion_spans(text: str) -> list[_Span]:
     out: list[_Span] = []
     used_nlp = False
     try:
-        import nlp_suggester
+        from . import nlp_suggester
         if nlp_suggester.available():
             used_nlp = True
             for s, e, t in nlp_suggester.suggest(text):

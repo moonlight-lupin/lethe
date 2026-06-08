@@ -6,7 +6,10 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 from fpdf import FPDF
 
-os.makedirs("samples", exist_ok=True)
+# Always write to the repo-root samples/ folder, regardless of where this dev
+# script is launched from.
+SAMPLES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "samples")
+os.makedirs(SAMPLES, exist_ok=True)
 
 MEMO = [
     "Dear Mr John Smith,",
@@ -39,7 +42,7 @@ for cp, contact, email in [
 ]:
     row = t.add_row().cells
     row[0].text, row[1].text, row[2].text = cp, contact, email
-doc.save("samples/sample-memo.docx")
+doc.save(os.path.join(SAMPLES, "sample-memo.docx"))
 
 # ---- .pdf (ASCII-safe so the core PDF font is happy) ------------------------
 pdf = FPDF()
@@ -51,7 +54,7 @@ pdf.set_font("Helvetica", size=11)
 for line in MEMO:
     pdf.set_x(pdf.l_margin)
     pdf.multi_cell(pdf.epw, 7, line if line else " ")
-pdf.output("samples/sample-memo.pdf")
+pdf.output(os.path.join(SAMPLES, "sample-memo.pdf"))
 
 # ---- .xlsx (a counterparty register, with a formula) ------------------------
 wb = Workbook()
@@ -70,7 +73,7 @@ for r in data:
     ws.append(list(r))
 ws["E5"] = "=SUM(E2:E4)"   # a formula, to prove formulas survive redaction
 ws["D5"] = "Total"
-wb.save("samples/sample-counterparties.xlsx")
+wb.save(os.path.join(SAMPLES, "sample-counterparties.xlsx"))
 
 print("Created:")
 for f in ("sample-memo.docx", "sample-memo.pdf", "sample-counterparties.xlsx"):

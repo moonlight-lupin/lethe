@@ -4,9 +4,10 @@ from __future__ import annotations
 import json
 import os
 
-from core import Entity
+from . import APP_ROOT
+from .core import Entity
 
-DICT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entities.json")
+DICT_PATH = os.path.join(APP_ROOT, "entities.json")
 
 
 def load_entities() -> list[Entity]:

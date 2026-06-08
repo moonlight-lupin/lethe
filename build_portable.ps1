@@ -17,7 +17,7 @@ $proj    = $PSScriptRoot
 $distRoot= Join-Path $proj "dist"
 $dist    = Join-Path $distRoot "DeIdentifier-Portable"
 $runtime = Join-Path $dist "runtime"
-$appFiles= @("app.py","core.py","docio.py","vault.py","store.py","nlp_suggester.py")
+$appFiles= @("app.py")              # root entry point; engine lives in the lethe\ package
 
 Write-Host "1/6  Resetting build folder..."
 if (Test-Path $dist) { Remove-Item -LiteralPath $dist -Recurse -Force }
@@ -55,6 +55,14 @@ if ($WithNLP) {
 
 Write-Host "5/6  Copying app code + launcher + config..."
 foreach ($f in $appFiles) { Copy-Item (Join-Path $proj $f) (Join-Path $dist $f) -Force }
+# Ship the engine package (core, docio, vault, store, nlp_suggester). Tests and
+# tools are dev-only and deliberately not bundled.
+$pkg = Join-Path $proj "lethe"
+if (Test-Path $pkg) {
+  Copy-Item $pkg (Join-Path $dist "lethe") -Recurse -Force
+  Get-ChildItem -Recurse -Directory -Filter "__pycache__" (Join-Path $dist "lethe") |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+}
 # Launcher, README and .streamlit\config.toml are kept under dist\_assets so they
 # survive a rebuild. If they don't exist yet, this build assumes you've created
 # them once (see the originals committed alongside this script).
@@ -63,6 +71,10 @@ if (Test-Path $assets) { Copy-Item (Join-Path $assets "*") $dist -Recurse -Force
 # Ship the sample test files (docx/pdf/xlsx) so users can try the formats.
 $samples = Join-Path $proj "samples"
 if (Test-Path $samples) { Copy-Item $samples (Join-Path $dist "samples") -Recurse -Force }
+# Ship the web theme assets (Cinzel wordmark font + favicon) so the reskin
+# renders identically in the portable build — app.py serves these from /static.
+$webStatic = Join-Path $proj "web_static"
+if (Test-Path $webStatic) { Copy-Item $webStatic (Join-Path $dist "web_static") -Recurse -Force }
 # OPTIONAL: pre-seed the firm's shared counterparty list so every teammate
 # starts with it. Drop a prepared entities.json next to this script to include it.
 if (Test-Path (Join-Path $proj "entities.shared.json")) {

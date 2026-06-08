@@ -21,52 +21,244 @@ if _HERE not in sys.path:
 import html as _html
 import io
 import secrets
+import urllib.parse
 import zipfile
 from datetime import datetime, timezone
 
-from nicegui import run, ui
+from nicegui import app, run, ui
 
-import nlp_suggester
-import vault
-from core import Entity, assign_tokens, build_replacer, build_restorer, detect, _whole_word_regex
-from docio import extract_text, file_kind, redact_document
-from store import load_entities, merge_entities, save_entities
+from lethe import (
+    Entity,
+    _whole_word_regex,
+    assign_tokens,
+    build_replacer,
+    build_restorer,
+    detect,
+    extract_text,
+    file_kind,
+    load_entities,
+    merge_entities,
+    nlp_suggester,
+    redact_document,
+    save_entities,
+    vault,
+)
 
-# ---- look & feel -------------------------------------------------------------
-PRIMARY = "#72263d"  # deep burgundy
-ui.colors(primary=PRIMARY, secondary="#3a1420", accent="#a3526a",
-          positive="#15803d", dark="#1a0e13")
+# ---- look & feel — "Lethe · the river of oblivion" theme --------------------
+# A classical reskin in the same family as Argus ("The Watcher's Codex") and
+# Pythia ("Oracle's Manuscript"): warm parchment neutrals, a Cinzel inscription
+# wordmark, bronze-gold ornament and a Greek-key meander — with Lethe's own
+# dusk-amethyst accent (sleep, poppies, forgetting). The same design tokens
+# invert under dark mode (`body.body--dark`, toggled from the header) with no
+# markup changes — exactly the token architecture the two sibling apps use.
+PRIMARY = "#6a4690"  # dusk amethyst — Lethe's accent within the family
+APP_VERSION = "0.1.0"
+REPO_URL = "https://github.com/moonlight-lupin/lethe"
 
-TYPE_COLOR = {"PERSON": "teal-7", "COUNTERPARTY": "deep-purple-6", "OTHER": "pink-7",
+ui.colors(primary=PRIMARY, secondary="#4a3066", accent="#7d56a6",
+          positive="#3f7d4e", negative="#a83a2c", warning="#9b6f16", dark="#14110b")
+
+# Review-table badge colours, kept in the amethyst/gold family.
+TYPE_COLOR = {"PERSON": "deep-purple-6", "COUNTERPARTY": "amber-8", "OTHER": "pink-7",
               "EMAIL": "blue-grey-6", "PHONE": "blue-grey-6", "ACCOUNT": "blue-grey-6"}
-SOURCE_BADGE = {"dictionary": ("Known entity", "teal-7"),
+SOURCE_BADGE = {"dictionary": ("Known entity", "deep-purple-6"),
                 "pattern": ("Pattern", "blue-grey-6"),
                 "suggestion": ("Suggested", "amber-8"),
                 "manual": ("Manual", "pink-7")}
 
-PREVIEW_CSS = """
+
+def _svg_uri(svg: str) -> str:
+    return "data:image/svg+xml," + urllib.parse.quote(svg, safe="")
+
+
+def _river_mark(gold: str, amethyst: str) -> str:
+    """Lethe's emblem — three flowing currents, a dusk-amethyst middle stream."""
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">'
+        f'<path d="M2 7.5 q3 -3 6 0 t6 0 t6 0" fill="none" stroke="{gold}" stroke-width="1.9" stroke-linecap="round"/>'
+        f'<path d="M2 12.5 q3 -3 6 0 t6 0 t6 0" fill="none" stroke="{amethyst}" stroke-width="1.9" stroke-linecap="round"/>'
+        f'<path d="M2 17.5 q3 -3 6 0 t6 0 t6 0" fill="none" stroke="{gold}" stroke-width="1.9" stroke-linecap="round"/>'
+        '</svg>')
+
+
+def _meander(stroke: str) -> str:
+    """A Greek-key meander tile — the family's restrained classical divider."""
+    return ("<svg xmlns='http://www.w3.org/2000/svg' width='20' height='13'>"
+            f"<path d='M2 11 V2 H15 V11 H6 V5.5 H11 V8.5' fill='none' stroke='{stroke}' stroke-width='1.2'/></svg>")
+
+
+_MARK_LIGHT = _svg_uri(_river_mark("#9a6a1d", "#6a4690"))
+_MARK_DARK = _svg_uri(_river_mark("#d8a945", "#b79be0"))
+_MEANDER_LIGHT = _svg_uri(_meander("#9a6a1d"))
+_MEANDER_DARK = _svg_uri(_meander("#d8a945"))
+
+THEME_CSS = """
 <style>
-body{background:#f7f5f6}
-.doc-preview{white-space:pre-wrap;word-break:break-word;font-size:13px;line-height:1.7;
-  max-height:62vh;overflow:auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px}
-mark.hl{border-radius:3px;padding:0 1px}
-mark.hl-PERSON{background:#ccfbf1}
-mark.hl-COUNTERPARTY{background:#ede9fe}
-mark.hl-OTHER{background:#fce7f3}
-mark.hl-EMAIL,mark.hl-PHONE,mark.hl-ACCOUNT{background:#e2e8f0}
-mark.hl.active{outline:2px solid #72263d;background:#fde68a}
-::selection{background:#fbcfe8}
-.guide-md{font-size:.9rem;line-height:1.55;color:#334155}
-.guide-md h1,.guide-md h2,.guide-md h3{font-weight:600;color:#72263d;margin:.9rem 0 .25rem}
-.guide-md h1{font-size:1.15rem}
-.guide-md h2{font-size:1.05rem}
-.guide-md h3{font-size:1rem}
-.guide-md p{margin:.35rem 0}
-.guide-md ul{margin:.2rem 0 .2rem 1.1rem;list-style:disc}
+/* Cinzel — Roman-inscription capitals, self-hosted (OFL) so the app stays
+   fully offline. Used only for the wordmark. */
+@font-face{font-family:"Cinzel";font-style:normal;font-weight:400 700;font-display:swap;
+  src:url("/static/fonts/cinzel-latin.woff2") format("woff2");}
+
+:root{
+  /* Neutrals — warm parchment / stone (shared with Argus + Pythia) */
+  --bg:#efe6d4; --panel:#fdfbf6; --panel2:#f4ecda; --border:#e3d9c2;
+  --text:#3a332a; --muted:#877a61; --chip:#ece2cd;
+  /* Accent — dusk amethyst (Lethe's own hue in the family) */
+  --accent:#6a4690; --accent-ink:#fdfbf6; --accent2:#7d56a6;
+  /* Ornament — bronze / antique gold */
+  --gold:#9a6a1d; --gold-2:#c4953f;
+  --danger:#a83a2c; --warn:#9b6f16; --ok:#3f7d4e;
+  /* Warm-tinted elevation (shadows on parchment read brown, not grey) */
+  --e1:0 1px 2px rgba(58,42,16,.06),0 1px 3px rgba(58,42,16,.05);
+  --e2:0 2px 8px -2px rgba(58,42,16,.12),0 2px 5px -3px rgba(58,42,16,.08);
+  --e3:0 14px 34px -10px rgba(58,42,16,.26),0 8px 14px -10px rgba(58,42,16,.16);
+  --r:12px; --r-sm:8px;
+  --font-display:"Cinzel","Trajan Pro",Georgia,serif;
+  --font-serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,Cambria,serif;
+}
+/* Dark "still water" mode — obsidian ground, glowing amethyst + gold */
+body.body--dark{
+  --bg:#14110b; --panel:#1f1810; --panel2:#2a2216; --border:#3a2f1e;
+  --text:#e8dec7; --muted:#a4967b; --chip:#2a2216;
+  --accent:#b79be0; --accent-ink:#1c1330; --accent2:#cdb6f0;
+  --gold:#d8a945; --gold-2:#f0cd80;
+  --danger:#f0a0a0; --warn:#f0c869; --ok:#7fcfa6;
+  --e1:0 1px 2px rgba(0,0,0,.4); --e2:0 2px 10px -2px rgba(0,0,0,.5); --e3:0 16px 40px -10px rgba(0,0,0,.65);
+}
+
+html,body{background:var(--bg)!important;}
+body{color:var(--text);min-height:100vh;
+  transition:background-color .25s cubic-bezier(.2,.8,.2,1),color .25s cubic-bezier(.2,.8,.2,1);}
+.nicegui-content,.q-page,.q-tab-panel,.q-tab-panels{background:transparent!important;}
+
+/* tailwind neutrals used in markup, remapped onto the palette */
+.text-slate-500,.text-slate-400,.text-gray-500,.text-gray-400{color:var(--muted)!important;}
+.text-teal-700{color:var(--accent2)!important;}
+.text-amber-700{color:var(--warn)!important;}
+.bg-gray-100,.bg-gray-200{background:var(--chip)!important;}
+
+/* ── header / wordmark ─────────────────────────────────────────────── */
+.q-header{background:var(--panel)!important;color:var(--text)!important;
+  border-bottom:1px solid var(--border);box-shadow:var(--e1);}
+/* Header accent elements (Guide, chip, theme toggle) also default to Quasar's
+   fixed `primary`; pin them to --accent too so they brighten in dark mode in
+   lockstep with the active tab — one uniform amethyst across the whole accent. */
+.q-header .q-btn,.q-header .q-btn__content,.q-header .q-chip.q-chip,.q-header .q-chip__content,.q-header .q-chip .q-icon{color:var(--accent)!important;}
+.wordmark{font-family:var(--font-display);font-weight:700;letter-spacing:.18em;font-size:21px;
+  text-transform:uppercase;line-height:1.05;
+  background:linear-gradient(180deg,var(--gold-2) 0%,var(--gold) 64%,#6f4c14 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;}
+body.body--dark .wordmark{background:linear-gradient(180deg,#f0d488 0%,var(--gold) 70%,#a4842f 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;}
+.wordmark-sub{color:var(--muted);font-size:11px;letter-spacing:.02em;}
+.lethe-mark{height:26px;width:28px;background-repeat:no-repeat;background-position:center;
+  background-size:contain;background-image:url("__MARK_LIGHT__");}
+body.body--dark .lethe-mark{background-image:url("__MARK_DARK__");}
+
+/* ── Greek-key meander divider ─────────────────────────────────────── */
+.meander{height:13px;background-repeat:repeat-x;background-position:center;opacity:.5;
+  background-image:url("__MEANDER_LIGHT__");}
+body.body--dark .meander{opacity:.45;background-image:url("__MEANDER_DARK__");}
+
+/* ── cards / panels ────────────────────────────────────────────────── */
+.q-card{background:var(--panel)!important;color:var(--text)!important;
+  border:1px solid var(--border)!important;border-radius:var(--r)!important;box-shadow:var(--e1)!important;}
+.q-card .text-base.font-medium,.q-card .text-lg{font-family:var(--font-serif);font-weight:600;
+  color:var(--text)!important;letter-spacing:.01em;}
+
+/* ── inputs ────────────────────────────────────────────────────────── */
+.q-field--outlined .q-field__control{background:var(--panel2)!important;border-radius:var(--r-sm)!important;}
+.q-field--outlined .q-field__control:before{border-color:var(--border)!important;}
+.q-field--outlined .q-field__control:hover:before{border-color:var(--accent)!important;}
+.q-field--outlined.q-field--focused .q-field__control:after{border-color:var(--accent)!important;}
+.q-field__native,.q-field__input,.q-field__native textarea,textarea.q-field__native{color:var(--text)!important;}
+.q-field__label,.q-field__marginal,.q-field__messages{color:var(--muted)!important;}
+
+/* ── popup menus / dropdowns ───────────────────────────────────────── */
+.q-menu{background:var(--panel)!important;color:var(--text)!important;border:1px solid var(--border);
+  border-radius:var(--r-sm)!important;box-shadow:var(--e3)!important;}
+.q-menu .q-item,.q-menu .q-item__label{color:var(--text)!important;}
+.q-menu .q-item:hover{background:var(--chip)!important;}
+
+/* ── tables ────────────────────────────────────────────────────────── */
+.q-table__card,.q-table{background:transparent!important;color:var(--text)!important;box-shadow:none!important;}
+.q-table thead th{color:var(--muted)!important;font-weight:700;text-transform:uppercase;
+  font-size:11px;letter-spacing:.05em;border-bottom:1px solid var(--border)!important;}
+.q-table tbody td{border-bottom:1px solid var(--border)!important;color:var(--text)!important;}
+.q-table tbody tr:hover{background:var(--chip)!important;}
+
+/* ── tabs ──────────────────────────────────────────────────────────── */
+.q-tabs{color:var(--muted)!important;border-bottom:1px solid var(--border);}
+.q-tab{color:var(--muted)!important;}
+/* Quasar pins active-color/indicator to its fixed `primary`, which never flips
+   for dark mode. Drive both from the mode-aware --accent (bright amethyst in
+   dark, deep amethyst in light) with enough specificity to beat Quasar's
+   `.text-primary !important`, so the active tab reads as light as the header. */
+.q-tabs .q-tab--active,.q-tabs .q-tab--active .q-tab__label{color:var(--accent)!important;}
+.q-tabs .q-tab__indicator{background-color:var(--accent)!important;}
+.q-tab__label{font-weight:600;}
+
+/* ── chips / uploader / expansion ──────────────────────────────────── */
+.q-chip{background:var(--chip)!important;color:var(--muted)!important;border-radius:999px;}
+.q-btn{border-radius:var(--r-sm)!important;}
+.q-uploader{background:var(--panel2)!important;border:1px dashed var(--border)!important;
+  border-radius:var(--r-sm)!important;color:var(--text)!important;box-shadow:none!important;}
+.q-uploader__header{background:var(--accent)!important;color:var(--accent-ink)!important;}
+.q-expansion-item .q-item{border-radius:var(--r-sm);}
+
+/* ── document preview ──────────────────────────────────────────────── */
+.doc-preview{white-space:pre-wrap;word-break:break-word;font-size:13.5px;line-height:1.75;
+  max-height:62vh;overflow:auto;background:var(--panel)!important;border:1px solid var(--border);
+  border-radius:var(--r);padding:16px 18px;color:var(--text);font-family:var(--font-serif);}
+mark.hl{border-radius:3px;padding:0 1px;color:inherit;}
+mark.hl-PERSON{background:#e7dcf2;}
+mark.hl-COUNTERPARTY{background:#f0e2c4;}
+mark.hl-OTHER{background:#f3dcdf;}
+mark.hl-EMAIL,mark.hl-PHONE,mark.hl-ACCOUNT{background:#e6ddc9;}
+mark.hl.active{outline:2px solid var(--accent);background:#f7e7a8;}
+body.body--dark mark.hl{color:#1c1408;}
+body.body--dark mark.hl-PERSON{background:#b79be0;}
+body.body--dark mark.hl-COUNTERPARTY{background:#d8a945;}
+body.body--dark mark.hl-OTHER{background:#e0a3ad;}
+body.body--dark mark.hl-EMAIL,body.body--dark mark.hl-PHONE,body.body--dark mark.hl-ACCOUNT{background:#b6a886;}
+body.body--dark mark.hl.active{outline:2px solid var(--accent);background:#f0cd80;}
+::selection{background:#e7dcf2;}
+body.body--dark ::selection{background:#5a467e;color:#fdfbf6;}
+
+/* ── guide markdown ────────────────────────────────────────────────── */
+.guide-md{font-size:.9rem;line-height:1.6;color:var(--text);}
+.guide-md h1,.guide-md h2,.guide-md h3{font-family:var(--font-serif);font-weight:600;
+  color:var(--accent2);margin:.9rem 0 .25rem;}
+.guide-md h1{font-size:1.15rem}.guide-md h2{font-size:1.05rem}.guide-md h3{font-size:1rem}
+.guide-md p{margin:.35rem 0}.guide-md ul{margin:.2rem 0 .2rem 1.1rem;list-style:disc}
 .guide-md li{margin:.12rem 0}
-.guide-md code{background:#f1f5f9;padding:0 3px;border-radius:3px;font-size:.85em}
+.guide-md code{background:var(--panel2);padding:0 3px;border-radius:3px;font-size:.85em}
+
+/* ── About section (mirrors Pythia's AboutPage; two columns fill the card) ── */
+.about{font-size:13.5px;line-height:1.6;color:var(--text);}
+.about p{margin:.5rem 0;}
+.about a{color:var(--accent2);text-decoration:none;}
+.about a:hover{text-decoration:underline;}
+.about h4{font-family:var(--font-serif);font-weight:600;color:var(--text);
+  margin:1rem 0 .25rem;font-size:14px;}
+.about ul{margin:.3rem 0 .3rem 1.2rem;list-style:disc;}
+.about li{margin:.2rem 0;}
+.about code{background:var(--panel2);padding:0 4px;border-radius:3px;font-size:.85em;}
+.about .meta{display:flex;align-items:center;gap:12px;margin:.2rem 0 .6rem;}
+.about .pill{background:var(--chip);color:var(--muted);border-radius:999px;
+  padding:2px 10px;font-size:11px;font-weight:600;}
+.about .gh{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);
+  border-radius:var(--r-sm);padding:4px 10px;font-size:12px;font-weight:600;color:var(--text);}
+.about .gh:hover{border-color:var(--accent);text-decoration:none;}
+.about .gh svg{width:18px;height:18px;}
+.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 44px;align-items:start;}
+.about-col>:first-child{margin-top:0;}
+@media(max-width:860px){.about-grid{grid-template-columns:1fr;}}
+.about .stack{color:var(--muted);font-size:11.5px;margin-top:1rem;
+  padding-top:.6rem;border-top:1px solid var(--border);}
 </style>
-"""
+""".replace("__MARK_LIGHT__", _MARK_LIGHT).replace("__MARK_DARK__", _MARK_DARK) \
+   .replace("__MEANDER_LIGHT__", _MEANDER_LIGHT).replace("__MEANDER_DARK__", _MEANDER_DARK)
 
 GUIDE_MD = """
 ### What this tool does
@@ -78,7 +270,7 @@ computer; nothing is ever sent anywhere.
 ### 1 · De-identify
 1. Drag in one or more **Word / PDF / Excel** files (or click *Try a sample memo*).
 2. The right pane shows the document with detected names **highlighted**
-   (teal = person, purple = counterparty, grey = email/phone/account).
+   (amethyst = person, gold = counterparty, grey = email/phone/account).
 3. In the **Review** list:
    - **Tick** what to remove. (Suggestions are off by default.)
    - **Click a row** to jump to it in the document.
@@ -126,6 +318,59 @@ review are the real safeguard.
 - A **blank passphrase** means the reversal key is saved unprotected.
 - **PDFs** come back as Word; **spreadsheets** keep their format.
 - Nothing leaves this machine — no internet, no cloud.
+"""
+
+# GitHub "Octocat" mark (same glyph Pythia's AboutPage uses).
+_GH_SVG = ('<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 '
+           '3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53'
+           '-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 '
+           '1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15'
+           '-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53'
+           '-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 '
+           '3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0'
+           '-4.42-3.58-8-8-8Z"/></svg>')
+
+# About card — mirrors Pythia's AboutPage layout (version pill + GitHub link,
+# intro, mythology note, engine bullets, license, tech-stack line).
+ABOUT_HTML = f"""
+<div class="about">
+  <div class="meta">
+    <span class="pill">v{APP_VERSION}</span>
+    <a class="gh" href="{REPO_URL}" target="_blank" rel="noreferrer">{_GH_SVG} View on GitHub</a>
+  </div>
+  <div class="about-grid">
+    <div class="about-col">
+      <p><b>Lethe</b> is a fully-local, reversible document de-identifier. It replaces real
+      people and counterparty names with stable tokens (like <code>[PERSON_001]</code>)
+      <b>before</b> you send a document to an AI, then restores the real names in the AI's
+      reply. Everything runs on this machine — no cloud, no API key, no internet call.</p>
+      <p>It is named after the <i>Lethe</i>, one of the five rivers of the Greek underworld —
+      the river of oblivion, whose waters erased the memories of those who drank from them.</p>
+      <h4>Detection engine</h4>
+      <ul>
+        <li>Microsoft <a href="https://github.com/microsoft/presidio" target="_blank" rel="noreferrer">Presidio</a>
+          (analyzer + anonymizer) — the PII detection framework</li>
+        <li><a href="https://spacy.io" target="_blank" rel="noreferrer">spaCy</a> with the
+          <code>en_core_web_sm</code> model — named-entity recognition for people &amp; organisations</li>
+        <li>Falls back to a built-in regex name-guesser when the NLP engine isn't installed —
+          your entity dictionary works either way</li>
+      </ul>
+    </div>
+    <div class="about-col">
+      <h4>Privacy &amp; storage</h4>
+      <p>Your entity dictionary (<code>entities.json</code>) and the encrypted, reversible
+      mappings (the <code>vault</code> folder) never leave this folder. Each job's reversal key
+      is encrypted with your passphrase; lose the passphrase and that job can no longer be reversed.</p>
+      <h4>License</h4>
+      <p>Lethe is released under the
+      <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">GNU Affero
+      General Public License v3.0</a>. Its detection libraries (Presidio, spaCy and the
+      <code>en_core_web_sm</code> model) are MIT-licensed; Lethe is not affiliated with or endorsed
+      by Microsoft or the spaCy project.</p>
+    </div>
+  </div>
+  <p class="stack">Built with NiceGUI · Microsoft Presidio · spaCy · python-docx · openpyxl · pypdf · cryptography.</p>
+</div>
 """
 
 SAMPLE = (
@@ -195,24 +440,34 @@ def _guide_dialog():
 
 
 def main():
-    ui.add_head_html(PREVIEW_CSS)
+    app.add_static_files("/static", os.path.join(_HERE, "web_static"))
+    ui.add_head_html(THEME_CSS)
     # remember the last text selection inside the preview, even after a click
     ui.add_body_html("<script>document.addEventListener('mouseup',function(){"
                      "try{var s=window.getSelection().toString();"
                      "if(s&&s.trim())window.__deidSel=s;}catch(e){}});</script>")
 
     guide = _guide_dialog()
-    with ui.header(elevated=False).classes("items-center justify-between px-6 py-3"):
+    dark = ui.dark_mode(value=False)
+
+    with ui.header(elevated=False).classes("items-center justify-between px-6 py-2"):
         with ui.row().classes("items-center gap-3 no-wrap"):
-            ui.icon("verified_user", size="26px").classes("opacity-90")
+            ui.html('<div class="lethe-mark"></div>')
             with ui.column().classes("gap-0"):
-                ui.label("Document De-identifier").classes(
-                    "text-lg font-semibold leading-tight whitespace-nowrap")
-                ui.label("Remove people & counterparties before sending to AI").classes(
-                    "text-xs opacity-80 leading-tight")
+                ui.html('<span class="wordmark">Lethe</span>')
+                ui.html('<span class="wordmark-sub">Document de-identifier · the river of oblivion</span>')
         with ui.row().classes("items-center gap-2 no-wrap"):
-            ui.button("Guide", icon="help_outline", on_click=guide.open).props("flat no-caps").classes("text-white")
-            ui.chip("Local · offline", icon="lock").props("outline").classes("text-white")
+            ui.button("Guide", icon="help_outline", on_click=guide.open).props("flat no-caps")
+            ui.chip("Local · offline", icon="lock").props("outline")
+            theme_btn = ui.button(icon="dark_mode").props("flat round dense").tooltip("Toggle light / dark")
+
+            def _toggle_theme():
+                dark.toggle()
+                theme_btn.props(f'icon={"light_mode" if dark.value else "dark_mode"}')
+
+            theme_btn.on("click", _toggle_theme)
+
+    ui.html('<div class="meander w-full"></div>')
 
     with ui.tabs().classes("w-full max-w-6xl mx-auto").props(
             "align=left active-color=primary indicator-color=primary no-caps") as tabs:
@@ -820,12 +1075,11 @@ def build_settings_panel():
 
             render()
         with ui.card().classes("w-full rounded-xl shadow-sm"):
-            ui.label("About").classes("text-base font-medium")
-            ui.label("Document De-identifier · runs fully on this machine · no data leaves your computer.").classes(
-                "text-sm text-slate-500")
+            ui.label("About Lethe").classes("text-base font-medium")
+            ui.html(ABOUT_HTML)
 
 
 if __name__ in {"__main__", "__mp_main__"}:
     main()
-    ui.run(title="Document De-identifier", port=8731, reload=False, show=True,
-           storage_secret="deident-local", favicon="🛡️")
+    ui.run(title="Lethe — Document De-identifier", port=8731, reload=False, show=True,
+           storage_secret="deident-local", favicon="web_static/favicon.svg")

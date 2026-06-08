@@ -1,9 +1,14 @@
 import io
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from docx import Document
 from openpyxl import Workbook
 
-from core import Entity, detect, assign_tokens, build_replacer
-from docio import extract_text, redact_document
+from lethe import (Entity, assign_tokens, build_replacer, detect,
+                   extract_text, redact_document)
 
 ents = [Entity("John Smith", "PERSON", ["Smith"]),
         Entity("Acme Capital Partners", "COUNTERPARTY", ["Acme"])]

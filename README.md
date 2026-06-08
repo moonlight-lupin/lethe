@@ -117,13 +117,31 @@ IT can push it silently:  `DeIdentifier-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES`
 
 ## Files
 
-| File | What it is |
+| Path | What it is |
 |------|------------|
 | `Launch De-identifier.bat` | Double-click to start |
-| `app.py` | The user interface |
-| `core.py` | Detection + redaction logic |
-| `docio.py` | Reading/writing Word, PDF, Excel |
-| `vault.py` | Encrypted, reversible mapping store |
-| `store.py` | Your entity dictionary |
+| `app.py` | The user interface (NiceGUI) — the only code at the root |
+| `lethe/` | The de-identification **engine** package |
+| `lethe/core.py` | Detection + redaction logic |
+| `lethe/docio.py` | Reading/writing Word, PDF, Excel |
+| `lethe/nlp_suggester.py` | Presidio + spaCy name / counterparty suggestions |
+| `lethe/vault.py` | Encrypted, reversible mapping store |
+| `lethe/store.py` | Your entity dictionary |
+| `tests/` | Smoke + document round-trip tests (`python tests/test_smoke.py`) |
+| `tools/make_samples.py` | Generate sample documents for testing |
+| `web_static/` | Theme assets (Cinzel font, favicon) |
 | `entities.json` | Your saved people/counterparties (created on first save) |
-| `vault\` | Encrypted re-identification mappings |
+| `vault/` | Encrypted re-identification mappings |
+
+---
+
+## License
+
+Lethe is released under the **[GNU Affero General Public License v3.0 or later](LICENSE)**
+(AGPL-3.0-or-later). If you run a modified version as a network service, the AGPL
+requires you to offer its users the corresponding source.
+
+See [NOTICE](NOTICE) for the third-party components Lethe builds on (Presidio,
+spaCy, and others, all under permissive licenses), and
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute — we use the AGPL with a
+lightweight DCO sign-off (`git commit -s`), not a CLA.
