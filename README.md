@@ -40,6 +40,9 @@ river of oblivion, whose waters made souls forget.
 - **Pattern detection:** emails, phone numbers and account numbers out of the box.
 - **Stable tokens:** the same name always maps to the same token — consistently
   across every file in a batch.
+- **Custom token types:** beyond the built-in PERSON / COUNTERPARTY / OTHER, define your
+  own categories in Settings (e.g. `PROJECT`, `FUND`) — they appear in the Type dropdowns
+  and tokenise as `[PROJECT_001]`.
 - **Format-preserving:** Word stays Word, Excel stays Excel (formulas preserved).
   PDFs are rebuilt as a de-identified Word file (via **pdfplumber**) — **tables become
   real Word tables**, and each source page gets a **`Page N` heading** so downstream
@@ -97,7 +100,8 @@ dropped simply won't be restored — glance over the result and check the restor
 detection dependable; generic "AI name detection" can miss names, a known list does
 not. Add aliases so every variant maps to one token; bulk-import a master list.
 
-**4 · Settings** — Download extra detection-language models on demand; toggle the
+**4 · Settings** — Download extra detection-language models on demand; define your own
+**token types** (e.g. PROJECT, FUND) that appear in the Type dropdowns; toggle the
 light/dark theme.
 
 ## Running it

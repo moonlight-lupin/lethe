@@ -1,6 +1,7 @@
 # ---- User data — NEVER commit (real names + reversal keys) ----
 entities.json
 entities.shared.json
+token_types.json
 vault/
 
 # ---- Python ----

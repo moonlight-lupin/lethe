@@ -25,7 +25,13 @@ from .core import (  # noqa: E402
     detect,
 )
 from .docio import extract_text, file_kind, pdf_warnings, redact_document  # noqa: E402
-from .store import load_entities, merge_entities, save_entities  # noqa: E402
+from .store import (  # noqa: E402
+    load_entities,
+    load_token_types,
+    merge_entities,
+    save_entities,
+    save_token_types,
+)
 
 __all__ = [
     "APP_ROOT",
@@ -38,4 +44,6 @@ __all__ = [
     "extract_text", "file_kind", "pdf_warnings", "redact_document",
     # entity dictionary
     "load_entities", "merge_entities", "save_entities",
+    # user-defined token types
+    "load_token_types", "save_token_types",
 ]

@@ -20,6 +20,7 @@ if _HERE not in sys.path:
 
 import html as _html
 import io
+import re
 import secrets
 import urllib.parse
 import zipfile
@@ -37,11 +38,13 @@ from lethe import (
     extract_text,
     file_kind,
     load_entities,
+    load_token_types,
     merge_entities,
     nlp_suggester,
     pdf_warnings,
     redact_document,
     save_entities,
+    save_token_types,
     vault,
 )
 
@@ -62,6 +65,17 @@ ui.colors(primary=PRIMARY, secondary="#4a3066", accent="#7d56a6",
 # Review-table badge colours, kept in the amethyst/gold family.
 TYPE_COLOR = {"PERSON": "deep-purple-6", "COUNTERPARTY": "amber-8", "OTHER": "pink-7",
               "EMAIL": "blue-grey-6", "PHONE": "blue-grey-6", "ACCOUNT": "blue-grey-6"}
+
+# Editable, name-like types (vs. pattern types, which are read-only badges).
+NAME_TYPES = ["PERSON", "COUNTERPARTY", "OTHER"]
+# Reserved — users can't redefine these as custom types.
+BUILTIN_TYPES = {"PERSON", "COUNTERPARTY", "OTHER", "EMAIL", "PHONE", "ACCOUNT"}
+
+
+def _sanitize_type(s: str) -> str:
+    """Normalise a user type name to a token-safe identifier, e.g.
+    'Fund name' -> 'FUND_NAME' (tokens become [FUND_NAME_001])."""
+    return re.sub(r"[^A-Za-z0-9]+", "_", (s or "").strip()).strip("_").upper()
 SOURCE_BADGE = {"dictionary": ("Known entity", "deep-purple-6"),
                 "pattern": ("Pattern", "blue-grey-6"),
                 "suggestion": ("Suggested", "amber-8"),
@@ -215,13 +229,13 @@ body.body--dark .meander{opacity:.45;background-image:url("__MEANDER_DARK__");}
   border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn);
   border-radius:var(--r-sm);padding:9px 13px;margin-bottom:10px;font-size:12.5px;line-height:1.5;}
 .pdf-warn b{color:var(--warn);}
-mark.hl{border-radius:3px;padding:0 1px;color:inherit;}
+mark.hl{border-radius:3px;padding:0 1px;color:inherit;background:#dbe8d8;}
 mark.hl-PERSON{background:#e7dcf2;}
 mark.hl-COUNTERPARTY{background:#f0e2c4;}
 mark.hl-OTHER{background:#f3dcdf;}
 mark.hl-EMAIL,mark.hl-PHONE,mark.hl-ACCOUNT{background:#e6ddc9;}
 mark.hl.active{outline:2px solid var(--accent);background:#f7e7a8;}
-body.body--dark mark.hl{color:#1c1408;}
+body.body--dark mark.hl{color:#1c1408;background:#8fb89a;}
 body.body--dark mark.hl-PERSON{background:#b79be0;}
 body.body--dark mark.hl-COUNTERPARTY{background:#d8a945;}
 body.body--dark mark.hl-OTHER{background:#e0a3ad;}
@@ -519,6 +533,10 @@ def build_deidentify_panel():
     manual_entities: list[Entity] = []
     state: dict = {"items": [], "preview_idx": 0}
 
+    # Built-in name types + any user-defined ones (Settings → Token types).
+    name_types = NAME_TYPES + load_token_types()
+    opts_js = "[" + ",".join(f"'{t}'" for t in name_types) + "]"
+
     with ui.column().classes("w-full gap-5 pt-5"):
         # ---- add documents ----
         with ui.card().classes("w-full rounded-xl shadow-sm"):
@@ -573,15 +591,16 @@ def build_deidentify_panel():
                                      selection="multiple").classes("w-full").props("flat dense").style(
                         "max-height:60vh")
                     # editable type for name-like items; read-only badge for patterns
-                    table.add_slot("body-cell-type", '''
+                    type_slot = """
                         <q-td :props="props">
-                          <q-select v-if="['PERSON','COUNTERPARTY','OTHER'].includes(props.row.type)"
+                          <q-select v-if="__OPTS__.includes(props.row.type)"
                             dense options-dense borderless v-model="props.row.type"
-                            :options="['PERSON','COUNTERPARTY','OTHER']"
+                            :options="__OPTS__"
                             @update:model-value="() => $parent.$emit('typechange', props.row)"
-                            style="min-width:120px" />
+                            style="min-width:140px" />
                           <q-badge v-else :color="props.row.type_color">{{ props.row.type }}</q-badge>
-                        </q-td>''')
+                        </q-td>""".replace("__OPTS__", opts_js)
+                    table.add_slot("body-cell-type", type_slot)
                     table.add_slot("body-cell-source", '''
                         <q-td :props="props">
                           <q-badge outline :color="props.row.source_color">{{ props.row.source_label }}</q-badge>
@@ -596,8 +615,9 @@ def build_deidentify_panel():
                             "outlined dense").style("min-width:180px")
                         file_select.visible = False
                     with ui.row().classes("items-center gap-2 w-full"):
-                        manual_type = ui.select(options=["COUNTERPARTY", "PERSON", "OTHER"],
-                                                value="COUNTERPARTY").props("outlined dense").style("width:160px")
+                        manual_type = ui.select(
+                            options=["COUNTERPARTY"] + [t for t in name_types if t != "COUNTERPARTY"],
+                            value="COUNTERPARTY").props("outlined dense").style("width:180px")
                         ui.button("Redact selection", icon="visibility_off",
                                   on_click=lambda: redact_selection()).props("outline no-caps dense")
                     ui.label("Select any text in the document below, then click “Redact selection”.").classes(
@@ -969,6 +989,7 @@ def build_reidentify_panel():
 def build_dictionary_panel():
     rows: list[dict] = [{"canonical": e.canonical, "type": e.type, "aliases": ", ".join(e.aliases)}
                         for e in load_entities()]
+    dict_types = ["PERSON", "COUNTERPARTY"] + load_token_types()
 
     with ui.column().classes("w-full gap-5 pt-5"):
         with ui.card().classes("w-full rounded-xl shadow-sm"):
@@ -994,9 +1015,11 @@ def build_dictionary_panel():
                             ui.input(value=r["canonical"],
                                      on_change=lambda e, r=r: r.update(canonical=e.value)).props(
                                 "outlined dense").classes("flex-1")
-                            ui.select(options=["PERSON", "COUNTERPARTY"], value=r["type"],
+                            ui.select(options=(dict_types if r["type"] in dict_types
+                                               else dict_types + [r["type"]]),
+                                      value=r["type"],
                                       on_change=lambda e, r=r: r.update(type=e.value)).props(
-                                "outlined dense").style("width:170px")
+                                "outlined dense").style("width:190px")
                             ui.input(value=r["aliases"],
                                      on_change=lambda e, r=r: r.update(aliases=e.value)).props(
                                 "outlined dense").classes("flex-1")
@@ -1040,7 +1063,8 @@ def build_dictionary_panel():
                 ui.label("Paste one name per line (e.g. your counterparty master list).").classes(
                     "text-sm text-slate-500")
                 bulk = ui.textarea(label="Names").props("outlined").classes("w-full")
-                btype = ui.select(options=["COUNTERPARTY", "PERSON"], value="COUNTERPARTY",
+                btype = ui.select(options=["COUNTERPARTY", "PERSON"] + load_token_types(),
+                                  value="COUNTERPARTY",
                                   label="Add as type").props("outlined dense").style("width:200px")
 
                 def append_bulk():
@@ -1120,6 +1144,73 @@ def build_settings_panel():
                 render.refresh()
 
             render()
+
+        # ---- user-defined token types ----
+        with ui.card().classes("w-full rounded-xl shadow-sm"):
+            ui.label("Token types").classes("text-base font-medium")
+            ui.label("Built-in: PERSON, COUNTERPARTY, OTHER (names) plus EMAIL, PHONE, ACCOUNT "
+                     "(patterns). Add your own categories — they appear in the Type dropdowns on "
+                     "the De-identify and Entity dictionary tabs, and tokenise as [PROJECT_001].").classes(
+                "text-sm text-slate-500")
+            custom_types = list(load_token_types())
+            types_box = ui.column().classes("w-full gap-1 mt-2")
+            reload_row = ui.row().classes("items-center gap-2")
+
+            @ui.refreshable
+            def render_types():
+                types_box.clear()
+                with types_box:
+                    if not custom_types:
+                        ui.label("No custom types yet — add one below.").classes("text-sm text-slate-400")
+                    for t in custom_types:
+                        with ui.row().classes("items-center gap-2"):
+                            ui.badge(t).props("color=deep-purple-6")
+                            ui.label(f"→ [{t}_001]").classes("text-xs text-slate-500")
+                            ui.button(icon="delete", on_click=lambda t=t: remove_type(t)).props(
+                                "flat round dense color=grey-7")
+
+            def note_reload():
+                reload_row.clear()
+                with reload_row:
+                    ui.icon("info", size="16px").classes("text-amber-700")
+                    ui.label("Reload the app to use the updated types in the dropdowns.").classes(
+                        "text-xs text-amber-700")
+                    ui.button("Reload now", icon="refresh",
+                              on_click=lambda: ui.run_javascript("location.reload()")).props(
+                        "flat dense no-caps size=sm")
+
+            def add_type():
+                t = _sanitize_type(new_type.value)
+                new_type.value = ""
+                if not t:
+                    ui.notify("Enter a type name (letters or numbers).", color="warning")
+                    return
+                if t in BUILTIN_TYPES:
+                    ui.notify(f"{t} is a built-in type.", color="warning")
+                    return
+                if t in custom_types:
+                    ui.notify(f"{t} already exists.", color="warning")
+                    return
+                custom_types.append(t)
+                save_token_types(custom_types)
+                render_types.refresh()
+                note_reload()
+                ui.notify(f"Added type {t}", color="positive")
+
+            def remove_type(t):
+                if t in custom_types:
+                    custom_types.remove(t)
+                    save_token_types(custom_types)
+                    render_types.refresh()
+                    note_reload()
+                    ui.notify(f"Removed {t}", color="primary")
+
+            render_types()
+            with ui.row().classes("items-center gap-2 mt-2"):
+                new_type = ui.input(placeholder="New type, e.g. PROJECT").props(
+                    "outlined dense").on("keydown.enter", lambda: add_type())
+                ui.button("Add type", icon="add", on_click=add_type).props("outline no-caps")
+
         with ui.card().classes("w-full rounded-xl shadow-sm"):
             ui.label("About Lethe").classes("text-base font-medium")
             ui.html(ABOUT_HTML)

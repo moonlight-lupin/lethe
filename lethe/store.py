@@ -8,6 +8,24 @@ from . import APP_ROOT
 from .core import Entity
 
 DICT_PATH = os.path.join(APP_ROOT, "entities.json")
+TYPES_PATH = os.path.join(APP_ROOT, "token_types.json")
+
+
+def load_token_types() -> list[str]:
+    """User-defined extra entity/token types (e.g. PROJECT, FUND). These appear
+    in the Type dropdowns and tokenise as [PROJECT_001] etc."""
+    if not os.path.exists(TYPES_PATH):
+        return []
+    try:
+        with open(TYPES_PATH, "r", encoding="utf-8") as fh:
+            return [str(t) for t in json.load(fh) if t]
+    except (ValueError, OSError):
+        return []
+
+
+def save_token_types(types: list[str]) -> None:
+    with open(TYPES_PATH, "w", encoding="utf-8") as fh:
+        json.dump(types, fh, indent=2, ensure_ascii=False)
 
 
 def load_entities() -> list[Entity]:
