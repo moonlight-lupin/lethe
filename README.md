@@ -43,7 +43,9 @@ river of oblivion, whose waters made souls forget.
 - **Format-preserving:** Word stays Word, Excel stays Excel (formulas preserved).
   PDFs are rebuilt as a de-identified Word file (via **pdfplumber**) — **tables become
   real Word tables**, and each source page gets a **`Page N` heading** so downstream
-  tools can quote against the *original* PDF pages.
+  tools can quote against the *original* PDF pages. The file opens with an **agent-facing
+  notice header** instructing readers/AIs to cite by source page and keep the
+  `[TOKEN_NNN]` placeholders verbatim.
 - **Image-page warning:** Lethe flags PDF pages that are scans/figures with no
   extractable text — names rendered as pixels can't be detected (there's no OCR), so
   the gap is made visible rather than silent.

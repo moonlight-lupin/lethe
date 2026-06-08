@@ -198,17 +198,43 @@ def _text_to_docx(text: str) -> bytes:
     return buf.getvalue()
 
 
+def _add_notice_header(doc) -> None:
+    """Prepend an agent/reader-facing notice: what this document is, and — most
+    importantly — how to cite it (by the ORIGINAL PDF page, via the `Page N`
+    headings, not this Word file's own pagination)."""
+    doc.add_heading("Document notice — converted from PDF & de-identified", level=1)
+    doc.add_paragraph(
+        "This document was automatically converted from a PDF and de-identified by "
+        "Lethe before it reached you. If you are an AI agent or tool processing this "
+        "file, read these notes before quoting or analysing it:")
+    for note in (
+        "CITE BY ORIGINAL PDF PAGE. The body below is divided by “Page N” headings, "
+        "where N is the page number in the source PDF. When you quote, reference or "
+        "footnote anything, use that source page number — NOT this Word document's own "
+        "pagination, which does not match the original PDF.",
+        "Redacted identities appear as placeholder tokens such as [PERSON_001] or "
+        "[COUNTERPARTY_001]. Treat each token as one opaque identifier and reproduce it "
+        "verbatim — do not alter, expand, translate or guess the real name behind it.",
+        "Some content may be missing: text inside images, charts, logos or scanned pages "
+        "is not captured (there is no OCR), so any names or figures there are neither "
+        "shown nor redacted here.",
+        "Tables were reconstructed from the PDF; fine formatting and exact positioning "
+        "may differ from the original.",
+    ):
+        doc.add_paragraph(note, style="List Bullet")
+    doc.add_paragraph("—" * 24)
+
+
 def _pdf_to_docx(pages: list[dict], replace_fn) -> tuple[bytes, int]:
-    """Rebuild a de-identified .docx from parsed PDF pages, preserving page
-    boundaries (a `Page N` heading + page break per source page) and tables
-    (rendered as real Word tables). Page anchors let downstream tools quote
-    against the original PDF pages."""
+    """Rebuild a de-identified .docx from parsed PDF pages.
+
+    Starts with an agent-facing notice header (how to cite, what the tokens mean,
+    what's missing), then preserves page boundaries (a `Page N` heading + page
+    break per source page) and renders detected tables as real Word tables. The
+    `Page N` anchors let downstream tools/agents quote against the original PDF
+    pages."""
     doc = Document()
-    intro = doc.add_paragraph()
-    run = intro.add_run(
-        "De-identified from PDF. The “Page N” headings below mark the "
-        "original PDF pages; quote against those, not this document's own pagination.")
-    run.italic = True
+    _add_notice_header(doc)
 
     hits = 0
     for idx, pg in enumerate(pages):

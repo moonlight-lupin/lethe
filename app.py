@@ -338,7 +338,9 @@ review are the real safeguard.
 - **Keep your passphrase + Job ID together** — you need both to reverse a job.
 - A **blank passphrase** means the reversal key is saved unprotected.
 - **PDFs** come back as Word — tables stay tables, and each page gets a *Page N*
-  heading (matching the original PDF) so you can cite pages. Image/scan pages are flagged.
+  heading (matching the original PDF) so you can cite pages. The file opens with a short
+  notice telling an AI to cite by source page and keep the tokens intact. Image/scan
+  pages are flagged.
 - Nothing leaves this machine — no internet, no cloud.
 """
 
