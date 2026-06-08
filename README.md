@@ -1,147 +1,153 @@
-# Document De-identifier
+<p align="center">
+  <img src="web_static/favicon.svg" width="72" alt="Lethe logo" />
+</p>
 
-A small, **fully local** tool that strips people and counterparties out of
-documents *before* you send them to an AI model — and lets you put the real
-names back into the AI's answer afterwards.
+<h1 align="center">Lethe</h1>
 
-Nothing leaves your machine. There is no cloud service, no API key, no internet
-call. The names you are trying to protect are never transmitted anywhere.
-
----
-
-## How to start it
-
-**Double-click `Launch De-identifier.bat`.**
-
-A black window opens and your browser shows the app at `http://localhost:8731`.
-To stop it, close the black window.
-
-(First launch takes a few seconds while it starts up.)
+<p align="center">
+  A <b>fully-local, reversible</b> document de-identifier — it replaces people and
+  counterparty names with stable tokens <i>before</i> you send a document to an AI,
+  then restores the real names in the AI's reply. Nothing ever leaves your machine:
+  no cloud, no API key, no internet call.
+</p>
 
 ---
 
-## How it works — the three tabs
+## Purpose
 
-### 1 · De-identify
-1. Upload a **Word (.docx)**, **PDF**, or **Excel (.xlsx)** file.
-2. The tool lists everything it proposes to redact:
-   - ✅ **Known entities** — names from your dictionary (tab 3). These are the
-     reliable ones.
-   - 🔎 **Patterns** — emails, phone numbers, account numbers.
-   - ⚠️ **Possible names / counterparties** — people and organisations detected
-     by the NLP engine (Microsoft Presidio + spaCy) that aren't in your
-     dictionary yet. **Off by default** — you decide. (If the NLP engine isn't
-     installed, this falls back to a lighter regex name-guesser, people only.)
-3. **Review the list.** Untick anything that should stay; tick any suggested
-   name you want gone. *Nothing is written until you confirm.*
-4. Enter a **passphrase** and click **Generate**. You get:
-   - the de-identified document (same format — Word stays Word, Excel stays
-     Excel; PDFs come back as a de-identified Word file), and
-   - a **Job ID**.
+Lethe is a privacy gate for working with AI on sensitive documents. Drop in a
+**Word**, **PDF**, or **Excel** file; Lethe finds the people and counterparties —
+from your dictionary, pattern rules, and an optional NLP engine — replaces them
+with stable placeholder tokens like `[PERSON_001]`, and hands you a de-identified
+copy in the **same format** plus a **Job ID**. Paste the AI's answer back, pick the
+Job ID, and Lethe swaps the real names in again. The reversal key for each job is
+encrypted with a passphrase and stored only on your machine.
 
-Real names are replaced with stable tokens like `[PERSON_001]`,
-`[COUNTERPARTY_001]`, `[EMAIL_001]`. The same name always gets the same token.
+The names you are protecting are never transmitted anywhere — Lethe has no server
+side. Named after the *Lethe*, one of the five rivers of the Greek underworld: the
+river of oblivion, whose waters made souls forget.
 
-### 2 · Re-identify
-Paste the AI's reply (or upload it), pick the **Job ID**, enter the same
-**passphrase**, and the tokens turn back into the real names.
+## Key features
 
-### 3 · Entity dictionary
-**This is the most important part.** A curated list of your real people and
-counterparties (with their aliases — e.g. *Acme Capital Partners* / *Acme* /
-*ACP*) gives near-100% reliability on the names that actually matter. Generic
-"AI name detection" can miss names; a known list does not. Maintain this list
-and the tool is genuinely dependable.
+- **Fully local & reversible** — de-identify before the AI sees a document,
+  re-identify the AI's reply afterwards. No internet, no telemetry.
+- **Entity dictionary (the reliable core):** a curated list of your real people and
+  counterparties with their aliases (*Acme Capital Partners* / *Acme* / *ACP*) gives
+  near-100% reliability on the names that actually matter. Bulk-paste a master list.
+- **NLP suggestions:** Microsoft **Presidio** + **spaCy** detect *possible* names and
+  organisations not yet in your dictionary (off by default — you decide). Falls back
+  to a lightweight regex name-guesser when the NLP engine isn't installed.
+- **Pattern detection:** emails, phone numbers and account numbers out of the box.
+- **Stable tokens:** the same name always maps to the same token — consistently
+  across every file in a batch.
+- **Format-preserving:** Word stays Word, Excel stays Excel (formulas preserved);
+  PDFs come back as a de-identified Word file (the text is what you feed an AI anyway).
+- **Encrypted vault:** each job's token→name map is sealed with your passphrase
+  (PBKDF2 → Fernet). Lose the passphrase and that job is unrecoverable *by design*.
+- **Review before anything is written:** Lethe shows every proposed redaction,
+  highlighted in the document — nothing is changed until you confirm.
+- **Multi-language detection:** download extra spaCy models (Chinese, Japanese,
+  Korean, …) from the Settings tab; your dictionary works in every language regardless.
+- **Themed desktop UI:** a NiceGUI app with a classical light/dark "river of oblivion"
+  skin, shared with its sibling tools *Argus* and *Pythia*.
+- **Ships portable:** a self-contained Windows bundle and a per-user installer — no
+  admin rights required.
 
-You can bulk-paste your counterparty master list under **Bulk import**.
+## Architecture
 
----
+```
+app.py  (NiceGUI UI — the only code at the repo root)
+   │
+   └─►  lethe/   (engine package — no web dependencies)
+          core.py            detection + tokenisation + replace / restore
+          docio.py           Word / PDF / Excel read & write
+          nlp_suggester.py   Presidio + spaCy suggestions (optional)
+          vault.py           encrypted, reversible token → name store
+          store.py           entity dictionary (entities.json)
+```
 
-## Important to understand (limitations)
+The UI is a thin layer over the `lethe` package; all detection, redaction and
+storage logic lives there with no UI coupling. User data — `entities.json` and the
+encrypted `vault/` — sits next to the app, never inside the package.
 
-- **The review step is the safety net, not the AI.** The automatic name
-  *suggestions* are a convenience to help you spot gaps. Treat the dictionary as
-  the source of truth and always eyeball the review list.
-- **PDFs** are converted to text/Word output (PDFs can't be safely edited in
-  place). The text is what you feed an AI anyway, so this is by design.
-- **Scanned/image PDFs** won't work — there's no OCR. Only PDFs with real text.
-- In **Word**, a line that contains a redacted name keeps its text but may lose
-  fine in-line formatting (bold/italic within that one line). Correct redaction
-  is prioritised over formatting fidelity.
-- **The passphrase cannot be recovered.** Lose it and the re-identification
-  mapping for that job is gone. Keep the Job ID with the document.
-- The encrypted mappings live in the `vault\` folder next to the app.
+## How it works — the tabs
 
----
+**1 · De-identify** — Upload one or more files. Lethe lists what it proposes to
+redact: ✅ **known entities** (your dictionary), 🔎 **patterns** (email/phone/account),
+and ⚠️ **suggestions** (NLP-detected names, off by default). Review the list, tick or
+untick, set a **passphrase**, and **Generate** — you get the de-identified file(s) and
+a Job ID.
 
-## If you ever need to reinstall the engine
+**2 · Re-identify** — Paste the AI's reply (or upload it), pick the **Job ID**, enter
+the same **passphrase**, and the tokens turn back into the real names.
 
-The project standardises on **Python 3.13**. Open PowerShell in this folder:
+**3 · Entity dictionary** — Your curated people & counterparties. This is what makes
+detection dependable; generic "AI name detection" can miss names, a known list does
+not. Add aliases so every variant maps to one token; bulk-import a master list.
+
+**4 · Settings** — Download extra detection-language models on demand; toggle the
+light/dark theme.
+
+## Running it
+
+**Double-click `Launch De-identifier.bat`** — Lethe opens in your browser at
+`http://localhost:8731`. Close the black window to stop it. (First launch takes a few
+seconds to start up.)
+
+To (re)install the engine — Lethe standardises on **Python 3.13**:
 
 ```powershell
 py -V:3.13 -m venv .venv313
-# Full install (with the Presidio + spaCy suggestion engine):
+# Full install (Presidio + spaCy suggestion engine):
 .venv313\Scripts\python.exe -m pip install -r requirements.txt -r requirements-nlp.txt
 # OR lean install (regex name-guesser only, smaller):
 .venv313\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-The NLP engine (Presidio + spaCy) adds the ability to *suggest*
-counterparties/organisations, not just people. The app runs fine without it — it
-falls back to the regex name-guesser. (spaCy/Presidio have no Python 3.14 wheels
-yet, which is why the project pins 3.13.)
+The NLP engine adds the ability to *suggest* counterparties/organisations, not just
+people; Lethe runs fine without it. (spaCy/Presidio have no Python 3.14 wheels yet,
+which is why the project pins 3.13.) Run the checks with `python tests/test_smoke.py`
+and `python tests/test_doc.py`.
 
-## Rebuilding the portable distribution
+## Packaging
 
-`build_portable.ps1` produces the self-contained `dist\DeIdentifier-Portable\`
-folder + zip for teammates. Set `$WithNLP = $true` (default) for the Presidio
-build on Python 3.13, or `$false` for the lean regex-only build.
+`build_portable.ps1` produces the self-contained `dist\DeIdentifier-Portable\` folder
++ zip for teammates. Set `$WithNLP = $true` (default) for the Presidio build, or
+`$false` for the lean regex-only build.
 
-## Optional: building the installer (`DeIdentifier-Setup.exe`)
-
-For managed deployment (recommended once IT whitelists the app), `installer.iss`
-wraps the portable bundle into a single per-user installer — **no admin rights**,
-Start-Menu/Desktop shortcuts, an uninstaller, and silent mass-deploy for IT.
+For managed deployment, `installer.iss` wraps the portable bundle into a single
+per-user installer — **no admin rights**, Start-Menu/Desktop shortcuts, an
+uninstaller, and silent mass-deploy:
 
 ```powershell
-# one-time: install the Inno Setup compiler
-winget install --id JRSoftware.InnoSetup -e
-# build (after build_portable.ps1 has created dist\DeIdentifier-Portable\)
+winget install --id JRSoftware.InnoSetup -e         # one-time
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer.iss
-# -> dist\DeIdentifier-Setup.exe  (per-user install; ~69 MB)
+# -> dist\DeIdentifier-Setup.exe   (per-user; ~69 MB)
+# IT silent push:  DeIdentifier-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES
 ```
 
-IT can push it silently:  `DeIdentifier-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES`
+## Limitations
 
----
+- **The review step is the safety net, not the AI.** The NLP *suggestions* are a
+  convenience to help you spot gaps — treat the dictionary as the source of truth and
+  always eyeball the review list.
+- **Scanned / image-only PDFs won't work** — there's no OCR. Only PDFs with real text.
+- **Images, logos, charts, text boxes, metadata, comments and tracked changes are not
+  read** — a name inside a picture or in document metadata is not detected.
+- In **Word**, a line containing a redacted name keeps its text but may lose fine
+  in-line formatting (bold/italic within that line). Correct redaction is prioritised
+  over formatting fidelity.
+- **The passphrase cannot be recovered.** Lose it and the re-identification mapping for
+  that job is gone. Keep the Job ID with the document.
 
-## Files
-
-| Path | What it is |
-|------|------------|
-| `Launch De-identifier.bat` | Double-click to start |
-| `app.py` | The user interface (NiceGUI) — the only code at the root |
-| `lethe/` | The de-identification **engine** package |
-| `lethe/core.py` | Detection + redaction logic |
-| `lethe/docio.py` | Reading/writing Word, PDF, Excel |
-| `lethe/nlp_suggester.py` | Presidio + spaCy name / counterparty suggestions |
-| `lethe/vault.py` | Encrypted, reversible mapping store |
-| `lethe/store.py` | Your entity dictionary |
-| `tests/` | Smoke + document round-trip tests (`python tests/test_smoke.py`) |
-| `tools/make_samples.py` | Generate sample documents for testing |
-| `web_static/` | Theme assets (Cinzel font, favicon) |
-| `entities.json` | Your saved people/counterparties (created on first save) |
-| `vault/` | Encrypted re-identification mappings |
-
----
-
-## License
+## License & credits
 
 Lethe is released under the **[GNU Affero General Public License v3.0 or later](LICENSE)**
 (AGPL-3.0-or-later). If you run a modified version as a network service, the AGPL
-requires you to offer its users the corresponding source.
+requires you to offer its users the corresponding source. See [NOTICE](NOTICE) for
+third-party components and [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute
+(AGPL + DCO sign-off).
 
-See [NOTICE](NOTICE) for the third-party components Lethe builds on (Presidio,
-spaCy, and others, all under permissive licenses), and
-[CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute — we use the AGPL with a
-lightweight DCO sign-off (`git commit -s`), not a CLA.
+It builds on Microsoft **[Presidio](https://github.com/microsoft/presidio)** and
+**[spaCy](https://spacy.io)** (both MIT-licensed) for name detection. Lethe is not
+affiliated with or endorsed by Microsoft or the spaCy project.
