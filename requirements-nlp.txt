@@ -1,0 +1,10 @@
+# Optional NLP suggestion engine (Microsoft Presidio + spaCy).
+# Requires Python <= 3.13 (spaCy has no 3.14 wheels yet).
+# Install on top of requirements.txt:
+#   py -V:3.13 -m pip install -r requirements.txt -r requirements-nlp.txt
+presidio-analyzer
+presidio-anonymizer
+spacy
+click
+# Small English model (~12 MB) pinned by direct wheel URL so it installs offline-reproducibly:
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

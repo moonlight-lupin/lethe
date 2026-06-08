@@ -1,0 +1,5 @@
+nicegui
+python-docx
+openpyxl
+pypdf
+cryptography

@@ -1,0 +1,26 @@
+# ---- User data — NEVER commit (real names + reversal keys) ----
+entities.json
+entities.shared.json
+vault/
+
+# ---- Python ----
+__pycache__/
+*.pyc
+.venv/
+.venv313/
+*.egg-info/
+
+# ---- Build artifacts (large; regenerate via build_portable.ps1 + installer.iss) ----
+dist/DeIdentifier-Portable/
+dist/DeIdentifier-Portable.zip
+dist/DeIdentifier-Setup.exe
+dist/_embed.zip
+dist/Output/
+
+# ---- Temp / logs ----
+_e.txt
+_o.txt
+_b.txt
+_ng*.txt
+boot.*
+*.log
