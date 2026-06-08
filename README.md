@@ -76,10 +76,15 @@ encrypted `vault/` — sits next to the app, never inside the package.
 redact: ✅ **known entities** (your dictionary), 🔎 **patterns** (email/phone/account),
 and ⚠️ **suggestions** (NLP-detected names, off by default). Review the list, tick or
 untick, set a **passphrase**, and **Generate** — you get the de-identified file(s) and
-a Job ID.
+a Job ID. *When you hand the file to an AI, ask it to keep any `[TOKEN_NNN]`
+placeholders exactly as written.*
 
 **2 · Re-identify** — Paste the AI's reply (or upload it), pick the **Job ID**, enter
-the same **passphrase**, and the tokens turn back into the real names.
+the same **passphrase**, and the tokens turn back into the real names. The AI's output
+can be a **completely different document** from what you sent — a summary, redraft or
+translation — because re-identify just maps tokens back to names; it never needs the
+original file. Matching is **exact** (`[PERSON_001]`), so any token the AI altered or
+dropped simply won't be restored — glance over the result and check the restored count.
 
 **3 · Entity dictionary** — Your curated people & counterparties. This is what makes
 detection dependable; generic "AI name detection" can miss names, a known list does
