@@ -280,11 +280,26 @@ computer; nothing is ever sent anywhere.
 4. Optionally set a **passphrase**, then **Generate**. You get the de-identified
    file(s), a **reference** list of tokens, and a **Job ID**.
 
+**When you hand the file to an AI**, add an instruction like *"Keep any
+`[TOKEN_NNN]` placeholders exactly as written."* The AI can rewrite, summarise or
+translate the document however you like — it just needs to leave the tokens intact
+so the real names can go back afterwards.
+
 ### 2 · Re-identify
+The AI's reply can be a **completely different document** from the one you sent —
+a summary, a redraft, a translation, a table. Re-identify simply swaps every token
+it finds back to the real name, so it works on whatever text you give it; it never
+needs the original file.
+
 1. Pick the conversion from **Past conversions**.
 2. Enter the passphrase (if you set one).
 3. **Upload the AI's reply file** (same format back) *or* paste its text.
-4. Click **Re-identify** — the real names are restored.
+4. Click **Re-identify** — the real names are restored, and the count shows how
+   many tokens were swapped back.
+
+Restoration matches tokens **exactly** (`[PERSON_001]`). If the AI changed a token —
+dropped the brackets, changed its case, or split it across a line — that one name
+won't be restored, so glance over the result and check the count looks right.
 
 ### 3 · Entity dictionary
 Your curated list of people & counterparties — this is what makes detection
