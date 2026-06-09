@@ -1,31 +1,61 @@
 <p align="center">
-  <img src="web_static/favicon.svg" width="72" alt="Lethe logo" />
+  <img src="lethe/web_static/favicon.svg" width="72" alt="Lethe logo" />
 </p>
 
 <h1 align="center">Lethe</h1>
 
 <p align="center">
-  A <b>fully-local, reversible</b> document de-identifier — it replaces people and
-  counterparty names with stable tokens <i>before</i> you send a document to an AI,
-  then restores the real names in the AI's reply. Nothing ever leaves your machine:
-  no cloud, no API key, no internet call.
+  A <b>fully-local, reversible</b> document de-identifier — strip the names out of a
+  document <i>before</i> you send it to an AI, then put them back into the AI's reply.
+  Nothing ever leaves your machine: no cloud, no API key, no internet call.
 </p>
 
 ---
 
-## Purpose
+## The problem
 
-Lethe is a privacy gate for working with AI on sensitive documents. Drop in a
-**Word**, **PDF**, or **Excel** file; Lethe finds the people and counterparties —
-from your dictionary, pattern rules, and an optional NLP engine — replaces them
-with stable placeholder tokens like `[PERSON_001]`, and hands you a de-identified
-copy in the **same format** plus a **Job ID**. Paste the AI's answer back, pick the
-Job ID, and Lethe swaps the real names in again. The reversal key for each job is
-encrypted with a passphrase and stored only on your machine.
+You want to use AI on your work — summarise a deal memo, review a contract, draft a
+reply, sanity-check a model. But the document is **confidential**: it names clients,
+counterparties, deal parties, employees. Pasting it into ChatGPT, Claude or any
+third-party AI would send those names to an outside service — a breach of client
+confidentiality, your firm's data policy, or an NDA.
 
-The names you are protecting are never transmitted anywhere — Lethe has no server
-side. Named after the *Lethe*, one of the five rivers of the Greek underworld: the
-river of oblivion, whose waters made souls forget.
+So you're caught between two things you both want:
+
+> *"The AI could genuinely help with this… but I can't let it see who's involved."*
+
+The usual workarounds are poor: redact by hand (slow, error-prone, and the AI can no
+longer tell the parties apart), or just don't use AI at all (and forgo the help).
+
+## Why "Lethe"
+
+In Greek myth, **Lethe** (Λήθη, *"oblivion"*) is one of the five rivers of the
+underworld — the **river of forgetfulness**. The shades of the dead drank from it to
+forget their former lives before moving on.
+
+The name fits what the tool does: it makes a document **forget who is named in it**
+before that document goes to the AI. Unlike the myth, the forgetting is *reversible* —
+Lethe restores every real name afterwards.
+
+## How Lethe solves it
+
+Lethe sits between you and the AI as a **local privacy gate**:
+
+1. **De-identify** — Drop in a Word, PDF or Excel file. Lethe finds the people and
+   counterparties (from your dictionary, pattern rules and an optional NLP engine) and
+   replaces each with a stable placeholder token — `[PERSON_001]`, `[COUNTERPARTY_001]`.
+   You get back a de-identified copy in the **same format**, plus a **Job ID**. The same
+   name always maps to the same token, so the document still reads coherently and the AI
+   can reason about "[COUNTERPARTY_001]" throughout.
+2. **Use the AI freely** — Give the scrubbed document to any AI. It never sees a real
+   name, only opaque tokens, so there is nothing confidential to leak.
+3. **Re-identify** — Paste the AI's reply back into Lethe with the Job ID; it swaps the
+   real names back in. The reply can even be a *different* document — a summary, redraft
+   or translation — because Lethe just maps the tokens back to names.
+
+Everything runs on **your machine**. The names you are protecting are never transmitted
+anywhere — Lethe has no server side, no API key, no internet call. The reversal key for
+each job is encrypted with a passphrase and stored only on your computer.
 
 ## Key features
 
@@ -59,30 +89,28 @@ river of oblivion, whose waters made souls forget.
 - **Multi-language detection:** download extra spaCy models (Chinese, Japanese,
   Korean, …) from the Settings tab; your dictionary works in every language regardless.
 - **Themed desktop UI:** a NiceGUI app with a classical light/dark "river of oblivion"
-  skin, shared with its sibling tools *Argus* and *Pythia*.
-- **Ships portable:** a self-contained Windows bundle and a per-user installer — no
-  admin rights required.
+  skin.
+- **Ships everywhere:** a Windows installer and portable bundle (no Python needed), or
+  `pipx install` on Windows / macOS / Linux.
 
-## Architecture
+## Install
 
-```
-app.py  (NiceGUI UI — the only code at the repo root)
-   │
-   └─►  lethe/   (engine package — no web dependencies)
-          core.py            detection + tokenisation + replace / restore
-          docio.py           Word / PDF / Excel read & write
-          nlp_suggester.py   Presidio + spaCy suggestions (optional)
-          vault.py           encrypted, reversible token → name store
-          store.py           entity dictionary (entities.json)
-```
+| You are… | Install | Run |
+|---|---|---|
+| **on Windows, non-technical** | download the installer from [Releases](https://github.com/moonlight-lupin/lethe/releases) and run it (per-user, no admin rights) | Start-menu / Desktop shortcut |
+| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp] @ git+https://github.com/moonlight-lupin/lethe@v1.0.0"` | `lethe` |
+| **lean (no NLP engine, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.0.0"` | `lethe` |
 
-The UI is a thin layer over the `lethe` package; all detection, redaction and
-storage logic lives there with no UI coupling. User data — your `entities.json`
-dictionary, custom token types and the encrypted `vault/` — lives in a per-user data
-directory (`%APPDATA%\Lethe` on Windows, `~/Library/Application Support/Lethe` on
-macOS, `~/.local/share/Lethe` on Linux), or wherever `$LETHE_DATA_DIR` points (the
-Windows portable bundle sets it to keep data in-folder). It never goes inside the
-package.
+[pipx](https://pipx.pypa.io) installs Lethe into its own isolated environment and puts a
+`lethe` command on your PATH — the cross-platform way to run it on macOS and Linux. The
+`[nlp]` extra adds the Presidio + spaCy suggestion engine and the small English model;
+without it Lethe falls back to a built-in regex name-guesser. Either way, running `lethe`
+opens the app in your browser at `http://localhost:8731`.
+
+> spaCy/Presidio have no Python 3.14 wheels yet, so the `[nlp]` extra requires Python ≤ 3.13.
+
+The Windows installer and portable bundle embed their own Python, so they need **no
+Python on the target machine** — see [Packaging & releases](#packaging--releases).
 
 ## How it works — the tabs
 
@@ -108,24 +136,26 @@ not. Add aliases so every variant maps to one token; bulk-import a master list.
 **token types** (e.g. PROJECT, FUND) that appear in the Type dropdowns; toggle the
 light/dark theme.
 
-## Install
+## Architecture
 
-| You are… | Install | Run |
-|---|---|---|
-| **on Windows, non-technical** | download the installer from [Releases](https://github.com/moonlight-lupin/lethe/releases) and run it (per-user, no admin rights) | Start-menu / Desktop shortcut |
-| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp] @ git+https://github.com/moonlight-lupin/lethe@v1.0.0"` | `lethe` |
-| **lean (no NLP engine, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.0.0"` | `lethe` |
+```
+app.py  (NiceGUI UI)
+   │
+   └─►  lethe/   (engine package — no web dependencies)
+          core.py            detection + tokenisation + replace / restore
+          docio.py           Word / PDF / Excel read & write
+          nlp_suggester.py   Presidio + spaCy suggestions (optional)
+          vault.py           encrypted, reversible token → name store
+          store.py           entity dictionary (entities.json)
+          web_static/        bundled theme assets (Cinzel font, favicon)
+```
 
-[pipx](https://pipx.pypa.io) installs Lethe into its own isolated environment and puts a
-`lethe` command on your PATH — the cross-platform way to run it on macOS and Linux. The
-`[nlp]` extra adds the Presidio + spaCy suggestion engine and the small English model;
-without it Lethe falls back to a built-in regex name-guesser. Either way, running `lethe`
-opens the app in your browser at `http://localhost:8731`.
-
-> spaCy/Presidio have no Python 3.14 wheels yet, so the `[nlp]` extra requires Python ≤ 3.13.
-
-The Windows installer (and portable bundle) embed their own Python, so they need **no
-Python on the target machine** — see [Packaging](#packaging) for how they're built.
+The UI is a thin layer over the `lethe` package; all detection, redaction and storage
+logic lives there with no UI coupling. User data — your `entities.json` dictionary,
+custom token types and the encrypted `vault/` — lives in a per-user data directory
+(`%APPDATA%\Lethe` on Windows, `~/Library/Application Support/Lethe` on macOS,
+`~/.local/share/Lethe` on Linux), or wherever `$LETHE_DATA_DIR` points (the Windows
+portable bundle sets it to keep data in-folder). It never goes inside the package.
 
 ## Run from source (development)
 
@@ -137,22 +167,25 @@ py -V:3.13 -m venv .venv313                              # Windows; project stan
 
 Run the checks with `python tests/test_smoke.py` and `python tests/test_doc.py`.
 
-## Packaging
+## Packaging & releases
 
-`build_portable.ps1` produces the self-contained `dist\DeIdentifier-Portable\` folder
-+ zip for teammates. Set `$WithNLP = $true` (default) for the Presidio build, or
-`$false` for the lean regex-only build.
+Releases are built by **GitHub Actions** (`.github/workflows/release.yml`): pushing a
+`v*` tag builds the portable bundle and the Inno Setup installer on a clean Windows
+runner, then publishes a draft GitHub Release with `Lethe-<ver>-Setup.exe` and
+`Lethe-<ver>-Portable.zip` attached.
 
-For managed deployment, `installer.iss` wraps the portable bundle into a single
-per-user installer — **no admin rights**, Start-Menu/Desktop shortcuts, an
-uninstaller, and silent mass-deploy:
+To build locally instead:
 
 ```powershell
+./build_portable.ps1                                # -> dist\DeIdentifier-Portable\ + .zip
 winget install --id JRSoftware.InnoSetup -e         # one-time
-& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer.iss
-# -> dist\DeIdentifier-Setup.exe   (per-user; ~69 MB)
-# IT silent push:  DeIdentifier-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer.iss   # -> dist\Lethe-1.0.0-Setup.exe
 ```
+
+`build_portable.ps1` embeds its own Python 3.13 (so the bundle needs no Python on the
+target). Set `$WithNLP = $true` (default) for the Presidio build or `$false` for the lean
+regex-only build. The installer is per-user (no admin), with Start-Menu/Desktop shortcuts
+and silent mass-deploy (`/VERYSILENT`).
 
 ## Limitations
 
