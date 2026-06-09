@@ -100,6 +100,24 @@ def _append_index(entry: dict) -> None:
         json.dump(idx, fh, indent=2)
 
 
+def delete_job(job_id: str) -> bool:
+    """Permanently delete a conversion: its encrypted reversal key (.vault.json)
+    and its history-index entry. After this, the job can never be re-identified.
+    Returns True if anything was removed."""
+    removed = False
+    path = os.path.join(VAULT_DIR, f"{job_id}.vault.json")
+    if os.path.exists(path):
+        os.remove(path)
+        removed = True
+    idx = _read_index()
+    kept = [e for e in idx if e.get("job_id") != job_id]
+    if len(kept) != len(idx):
+        with open(INDEX_PATH, "w", encoding="utf-8") as fh:
+            json.dump(kept, fh, indent=2)
+        removed = True
+    return removed
+
+
 def history() -> list[dict]:
     """Every saved job, newest first, enriched with index metadata where present.
     Jobs created before the index existed still appear (id + date from filename)."""
