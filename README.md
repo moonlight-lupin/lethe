@@ -167,11 +167,10 @@ winget install --id JRSoftware.InnoSetup -e         # one-time
 
 ## License & credits
 
-Lethe is released under the **[GNU Affero General Public License v3.0 or later](LICENSE)**
-(AGPL-3.0-or-later). If you run a modified version as a network service, the AGPL
-requires you to offer its users the corresponding source. See [NOTICE](NOTICE) for
+Lethe is released under the **[Apache License 2.0](LICENSE)** — use it, modify it,
+embed it, commercially or otherwise, with attribution. See [NOTICE](NOTICE) for
 third-party components and [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute
-(AGPL + DCO sign-off).
+(Apache-2.0 + DCO sign-off).
 
 It builds on Microsoft **[Presidio](https://github.com/microsoft/presidio)** and
 **[spaCy](https://spacy.io)** (both MIT-licensed) for name detection. Lethe is not

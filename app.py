@@ -420,8 +420,8 @@ ABOUT_HTML = f"""
       is encrypted with your passphrase; lose the passphrase and that job can no longer be reversed.</p>
       <h4>License</h4>
       <p>Lethe is released under the
-      <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">GNU Affero
-      General Public License v3.0</a>. Its detection libraries (Presidio, spaCy and the
+      <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noreferrer">Apache
+      License 2.0</a>. Its detection libraries (Presidio, spaCy and the
       <code>en_core_web_sm</code> model) are MIT-licensed; Lethe is not affiliated with or endorsed
       by Microsoft or the spaCy project.</p>
     </div>

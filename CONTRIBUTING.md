@@ -5,20 +5,17 @@ features, and docs — are welcome.
 
 ## License of contributions
 
-Lethe is licensed under the **GNU Affero General Public License v3.0 or later
-(AGPL-3.0-or-later)**. By submitting a contribution (a pull request, patch, or
-any code or content), you agree that your contribution is licensed under those
-same AGPL-3.0-or-later terms — **inbound = outbound**.
-
-Your contribution stays in this public repository under the AGPL. We do **not**
-ask you to assign copyright or grant any relicensing rights; you keep the
-copyright to your work, licensed to the project (and everyone) under the AGPL.
+Lethe is licensed under the **Apache License, Version 2.0** (Apache-2.0). By
+submitting a contribution (a pull request, patch, or any code or content), you
+agree that your contribution is licensed under those same Apache-2.0 terms —
+**inbound = outbound** — as set out in section 5 of the license. You keep the
+copyright to your work; you grant the project and its users the copyright and
+patent licenses described in the Apache License.
 
 ## Developer Certificate of Origin (DCO)
 
-Instead of a Contributor License Agreement, we use the
-[Developer Certificate of Origin](https://developercertificate.org/) — a
-lightweight statement that you have the right to submit your contribution under
+We use the [Developer Certificate of Origin](https://developercertificate.org/) —
+a lightweight statement that you have the right to submit your contribution under
 the project's license.
 
 **Every commit must be signed off.** Git adds the sign-off for you with `-s`:
@@ -42,7 +39,7 @@ series.
 
 1. Fork the repository and create a topic branch.
 2. Make your change; keep it focused and match the surrounding code style.
-3. Run the smoke tests where applicable (`_smoke_test.py`, `_doc_test.py`).
+3. Run the smoke tests where applicable (`tests/test_smoke.py`, `tests/test_doc.py`).
 4. Commit with `-s` (DCO sign-off) and open a pull request that explains the
    change and why.
 

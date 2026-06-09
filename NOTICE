@@ -1,11 +1,12 @@
 Lethe — a local, reversible document de-identifier.
-Copyright (C) 2026 Meng Huey
+Copyright 2026 Meng Huey
 
-This program is free software: you can redistribute it and/or modify it under
-the terms of the GNU Affero General Public License as published by the Free
-Software Foundation, either version 3 of the License, or (at your option) any
-later version. See the LICENSE file for the full text, or
-<https://www.gnu.org/licenses/agpl-3.0.html>.
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this software except in compliance with the License. You may obtain a copy of
+the License at http://www.apache.org/licenses/LICENSE-2.0, or in the LICENSE
+file distributed alongside this software. Unless required by applicable law or
+agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.
 
 ================================================================================
 Third-party components
@@ -15,7 +16,6 @@ Lethe depends on, and/or bundles, the following open-source software. Each is
 distributed under its own license; the license types below are provided for
 convenience — consult each project for the authoritative terms.
 
-Runtime libraries
   - NiceGUI ......................... MIT License
   - Microsoft Presidio .............. MIT License
       (presidio-analyzer, presidio-anonymizer)
@@ -24,12 +24,11 @@ Runtime libraries
   - python-docx ..................... MIT License
   - openpyxl ........................ MIT License
   - pypdf ........................... BSD-3-Clause License
+  - pdfplumber ...................... MIT License
   - cryptography .................... Apache-2.0 OR BSD-3-Clause
   - phonenumbers .................... Apache-2.0 License
-
-Bundled assets
   - Cinzel (typeface) ............... SIL Open Font License 1.1
       https://fonts.google.com/specimen/Cinzel
 
-Lethe is not affiliated with or endorsed by Microsoft, the spaCy project, or
-any other third party listed above.
+Lethe is not affiliated with or endorsed by Microsoft, the spaCy project, or any
+other third party listed above.
