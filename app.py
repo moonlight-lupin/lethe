@@ -357,6 +357,8 @@ The tool reads the **text** of your files. It does **not** touch:
   **flags** image-based pages so you know to check them, but it can't read them (no OCR).
 - Text in **shapes, text boxes, charts or embedded objects**, and document
   **metadata, comments or tracked changes** — these may still carry names.
+- In **Excel**, a name buried inside a **formula** (e.g. `="Acme "&A1`) — names are
+  redacted in cell text, not inside formulas. (Rare, but worth a glance.)
 - Amounts, dates and ID numbers — unless they match the email / phone / account patterns.
 
 Always glance over the document preview before sending — your dictionary and your
@@ -369,6 +371,9 @@ review are the real safeguard.
   heading (matching the original PDF) so you can cite pages. The file opens with a short
   notice telling an AI to cite by source page and keep the tokens intact. Image/scan
   pages are flagged.
+- **Excel** keeps its charts, formatting and formulas — only cell text is changed. A
+  cell that mixes formatting *and* contains a redacted name may lose that cell's fine
+  in-line formatting (the redaction is still correct).
 - Nothing leaves this machine — no internet, no cloud.
 """
 

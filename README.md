@@ -157,6 +157,11 @@ winget install --id JRSoftware.InnoSetup -e         # one-time
 - In **Word**, a line containing a redacted name keeps its text but may lose fine
   in-line formatting (bold/italic within that line). Correct redaction is prioritised
   over formatting fidelity.
+- In **Excel**, only cell *text* is edited — charts, formatting and formulas are
+  preserved. Two edge cases: a redacted name that was styled with mixed formatting
+  *within a single cell* loses that cell's in-line formatting (the redaction itself is
+  still correct), and a name buried in a *formula string literal* (e.g.
+  `="Acme " & A1`) isn't caught — rare for de-identification.
 - **The passphrase cannot be recovered.** Lose it and the re-identification mapping for
   that job is gone. Keep the Job ID with the document.
 
