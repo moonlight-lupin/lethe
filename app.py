@@ -517,6 +517,32 @@ def _xlsx_preview_html(data: bytes, items: list) -> str:
     return "".join(out)
 
 
+def _extract_and_warn(data: bytes, kind: str):
+    """Heavy file I/O for one document — extracted text plus (for PDFs) the
+    image-based-page warnings. Runs in a worker thread so the UI stays live."""
+    text = extract_text(data, kind)
+    warnings = pdf_warnings(data) if kind == "pdf" else []
+    return text, warnings
+
+
+def _detect_text(text: str, entities: list):
+    """CPU-heavy detection — runs in a worker thread."""
+    return assign_tokens(detect(text, entities))
+
+
+def _redact_files(payloads, replace_fn):
+    """Redact each (name, data, kind) -> de-identified bytes. Runs in a worker
+    thread (PDF rebuild / xlsx surgery is heavy on large files)."""
+    outputs: dict[str, bytes] = {}
+    total = 0
+    for name, data, kind in payloads:
+        out_bytes, ext, hits = redact_document(data, kind, replace_fn)
+        base = name.rsplit(".", 1)[0]
+        outputs[f"{base}__deidentified{ext}"] = out_bytes
+        total += hits
+    return outputs, total
+
+
 def _guide_dialog():
     with ui.dialog() as dlg, ui.card().classes("max-w-2xl").style("max-height:85vh;overflow:auto"):
         with ui.row().classes("items-center justify-between w-full"):
@@ -765,22 +791,33 @@ def build_deidentify_panel():
             if f["kind"] == "xlsx":
                 preview_html.content = banner + _xlsx_preview_html(f["data"], state["items"])
             else:
-                text = extract_text(f["data"], f["kind"])
-                preview_html.content = banner + _preview_html(text, state["items"])
+                preview_html.content = banner + _preview_html(f.get("text", ""), state["items"])
 
         def on_preview_file(e):
             if e.value in [f["name"] for f in files]:
                 state["preview_idx"] = [f["name"] for f in files].index(e.value)
                 render_preview()
 
-        def run_detection():
+        async def run_detection():
+            # Detection (spaCy/Presidio) is CPU-heavy and would freeze the UI on a
+            # big document, so it runs in a worker thread with a spinner. Uses the
+            # text cached on each file (extracted once on upload).
             result.clear()
             if not files:
                 state["items"] = []
                 refresh_table()
                 return
-            combined = "\n\n".join(extract_text(f["data"], f["kind"]) for f in files)
-            items = assign_tokens(detect(combined, load_entities() + manual_entities))
+            combined = "\n\n".join(f.get("text", "") for f in files)
+            ents = load_entities() + manual_entities
+            note = ui.notification("Scanning for names…  (large documents take a few seconds)",
+                                   spinner=True, timeout=None)
+            try:
+                items = await run.io_bound(_detect_text, combined, ents)
+            except Exception as exc:  # noqa: BLE001
+                note.dismiss()
+                ui.notify(f"Couldn't scan the document(s): {exc}", color="negative")
+                return
+            note.dismiss()
             manual_set = {e.canonical.lower() for e in manual_entities}
             for it in items:
                 if it.source == "dictionary" and it.canonical.lower() in manual_set:
@@ -792,15 +829,18 @@ def build_deidentify_panel():
             f = e.file
             data = await f.read()
             kind = file_kind(f.name) or "txt"
-            entry = {"name": f.name, "kind": kind, "data": data}
-            if kind == "pdf":
-                try:
-                    entry["warnings"] = pdf_warnings(data)
-                except Exception:
-                    entry["warnings"] = []
+            entry = {"name": f.name, "kind": kind, "data": data, "text": "", "warnings": []}
             files.append(entry)
             render_files.refresh()
-            run_detection()
+            note = ui.notification(f"Reading {f.name}…", spinner=True, timeout=None)
+            try:
+                entry["text"], entry["warnings"] = await run.io_bound(_extract_and_warn, data, kind)
+            except Exception as exc:  # noqa: BLE001
+                note.dismiss()
+                ui.notify(f"Couldn't read {f.name}: {exc}", color="negative")
+                return
+            note.dismiss()
+            await run_detection()
             warns = entry.get("warnings")
             if warns:
                 pages = ", ".join(str(w["page"]) for w in warns)
@@ -810,31 +850,32 @@ def build_deidentify_panel():
             else:
                 ui.notify(f"Added {f.name}", color="primary")
 
-        def on_sample():
+        async def on_sample():
             files.clear()
             manual_entities.clear()
-            files.append({"name": "sample-memo.txt", "kind": "txt", "data": SAMPLE.encode("utf-8")})
+            files.append({"name": "sample-memo.txt", "kind": "txt",
+                          "data": SAMPLE.encode("utf-8"), "text": SAMPLE, "warnings": []})
             render_files.refresh()
-            run_detection()
+            await run_detection()
             ui.notify("Loaded sample memo", color="primary")
 
-        def remove_file(i):
+        async def remove_file(i):
             del files[i]
             state["preview_idx"] = 0
             render_files.refresh()
-            run_detection()
+            await run_detection()
 
-        def clear_files():
+        async def clear_files():
             files.clear()
             manual_entities.clear()
             state["preview_idx"] = 0
             render_files.refresh()
-            run_detection()
+            await run_detection()
 
-        def reset_all():
+        async def reset_all():
             """Full reset of the De-identify tab: files, manual redactions, the
             review list, passphrase and the export result — back to a clean slate."""
-            clear_files()
+            await clear_files()
             pw.value = ""
             add_dict.value = True
             result.clear()
@@ -856,10 +897,10 @@ def build_deidentify_panel():
                 return
             manual_entities.append(Entity(canonical=sel, type=manual_type.value, aliases=[]))
             await ui.run_javascript('window.__deidSel="";if(window.getSelection)window.getSelection().removeAllRanges();')
-            run_detection()
+            await run_detection()
             ui.notify(f'Redacting “{sel[:40]}”', color="primary")
 
-        def on_generate():
+        async def on_generate():
             if not files:
                 ui.notify("Add a document first", color="warning")
                 return
@@ -877,13 +918,15 @@ def build_deidentify_panel():
             job_id = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(2)
             created = datetime.now(timezone.utc).isoformat()
             sources = [f["name"] for f in files]
-            outputs: dict[str, bytes] = {}
-            total_hits = 0
-            for f in files:
-                out_bytes, ext, hits = redact_document(f["data"], f["kind"], replace_fn)
-                base = f["name"].rsplit(".", 1)[0]
-                outputs[f"{base}__deidentified{ext}"] = out_bytes
-                total_hits += hits
+            note = ui.notification("Generating de-identified file(s)…", spinner=True, timeout=None)
+            try:
+                outputs, total_hits = await run.io_bound(
+                    _redact_files, [(f["name"], f["data"], f["kind"]) for f in files], replace_fn)
+            except Exception as exc:  # noqa: BLE001
+                note.dismiss()
+                ui.notify(f"Couldn't generate the file(s): {exc}", color="negative")
+                return
+            note.dismiss()
             ref_bytes = _reference_text(job_id, created, sources, token_to_real)
 
             vault.save_job(job_id, token_to_real, passphrase,
