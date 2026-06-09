@@ -995,9 +995,17 @@ def build_reidentify_panel():
                 {"name": "source_file", "label": "Source file(s)", "field": "source_file", "align": "left"},
                 {"name": "replacements", "label": "Redactions", "field": "replacements", "align": "right"},
                 {"name": "job_id", "label": "Job ID", "field": "job_id", "align": "left"},
+                {"name": "actions", "label": "", "field": "actions", "align": "right"},
             ]
             htable = ui.table(columns=hcols, rows=[], row_key="job_id",
                               selection="single").classes("w-full").props("flat dense")
+            htable.add_slot("body-cell-actions", '''
+                <q-td :props="props" auto-width>
+                  <q-btn flat round dense size="sm" icon="delete" color="grey-7"
+                    @click.stop="() => $parent.$emit('deletejob', props.row)">
+                    <q-tooltip>Delete this conversion</q-tooltip>
+                  </q-btn>
+                </q-td>''')
 
             @ui.refreshable
             def render_history():
@@ -1017,6 +1025,30 @@ def build_reidentify_panel():
                     "Selected: none — click a row above."
 
             htable.on("selection", on_select)
+
+            async def on_delete(e):
+                row = e.args[0] if isinstance(e.args, list) else e.args
+                jid = row.get("job_id") if isinstance(row, dict) else None
+                if not jid:
+                    return
+                with ui.dialog() as dlg, ui.card():
+                    ui.label("Delete this conversion?").classes("text-base font-medium")
+                    ui.label(f"This permanently removes the reversal key for job “{jid}”. "
+                             "You will NOT be able to re-identify that document afterwards.").classes(
+                        "text-sm text-slate-600")
+                    with ui.row().classes("justify-end gap-2 w-full"):
+                        ui.button("Cancel", on_click=lambda: dlg.submit(False)).props("flat no-caps")
+                        ui.button("Delete", color="negative",
+                                  on_click=lambda: dlg.submit(True)).props("unelevated no-caps")
+                if await dlg:
+                    vault.delete_job(jid)
+                    if sel["job_id"] == jid:
+                        sel["job_id"] = None
+                        selected_label.text = "Selected: none — click a row above."
+                    render_history.refresh()
+                    ui.notify(f"Deleted conversion {jid}", color="primary")
+
+            htable.on("deletejob", on_delete)
 
         with ui.card().classes("w-full rounded-xl shadow-sm"):
             ui.label("Bring the real names back").classes("text-base font-medium")
