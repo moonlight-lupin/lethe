@@ -14,6 +14,9 @@ echo.
 REM Run the app using the bundled Python. No system Python required.
 REM The app opens your default browser itself once it's ready.
 set PYTHONUTF8=1
+REM Keep the entity dictionary + vault inside this portable folder (so the data
+REM travels with the bundle) rather than the per-user app-data directory.
+set "LETHE_DATA_DIR=%~dp0data"
 "runtime\python.exe" app.py
 
 echo.

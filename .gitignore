@@ -25,3 +25,6 @@ _b.txt
 _ng*.txt
 boot.*
 *.log
+
+# Python build artifacts
+/build/

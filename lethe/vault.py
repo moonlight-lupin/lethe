@@ -17,9 +17,9 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from . import APP_ROOT
+from . import DATA_DIR
 
-VAULT_DIR = os.path.join(APP_ROOT, "vault")
+VAULT_DIR = os.path.join(DATA_DIR, "vault")
 
 
 def _ensure_dir() -> None:

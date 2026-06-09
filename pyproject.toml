@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lethe"
+version = "1.0.0"
+description = "Lethe — a local, reversible document de-identifier"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+license = "Apache-2.0"
+authors = [{ name = "Meng Huey" }]
+keywords = ["pii", "de-identification", "redaction", "privacy", "nicegui", "presidio"]
+
+# Base engine + UI. The NLP suggestion engine is an optional extra (see below);
+# without it, Lethe falls back to a built-in regex name-guesser.
+dependencies = [
+    "nicegui",
+    "python-docx",
+    "openpyxl",
+    "pypdf",
+    "pdfplumber",
+    "cryptography",
+]
+
+[project.optional-dependencies]
+# Microsoft Presidio + spaCy + the small English model. Needs Python <= 3.13
+# (spaCy has no 3.14 wheels yet). Install with:  pipx install "lethe[nlp] @ git+..."
+nlp = [
+    "presidio-analyzer",
+    "presidio-anonymizer",
+    "spacy",
+    "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+]
+
+[project.scripts]
+lethe = "app:run_app"
+
+[project.urls]
+Homepage = "https://github.com/moonlight-lupin/lethe"
+Repository = "https://github.com/moonlight-lupin/lethe"
+
+[tool.setuptools]
+# app.py is the UI (a top-level module); the engine + assets live in the package.
+py-modules = ["app"]
+packages = ["lethe"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+lethe = ["web_static/*", "web_static/fonts/*"]

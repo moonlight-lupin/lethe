@@ -77,8 +77,12 @@ app.py  (NiceGUI UI — the only code at the repo root)
 ```
 
 The UI is a thin layer over the `lethe` package; all detection, redaction and
-storage logic lives there with no UI coupling. User data — `entities.json` and the
-encrypted `vault/` — sits next to the app, never inside the package.
+storage logic lives there with no UI coupling. User data — your `entities.json`
+dictionary, custom token types and the encrypted `vault/` — lives in a per-user data
+directory (`%APPDATA%\Lethe` on Windows, `~/Library/Application Support/Lethe` on
+macOS, `~/.local/share/Lethe` on Linux), or wherever `$LETHE_DATA_DIR` points (the
+Windows portable bundle sets it to keep data in-folder). It never goes inside the
+package.
 
 ## How it works — the tabs
 
@@ -104,26 +108,34 @@ not. Add aliases so every variant maps to one token; bulk-import a master list.
 **token types** (e.g. PROJECT, FUND) that appear in the Type dropdowns; toggle the
 light/dark theme.
 
-## Running it
+## Install
 
-**Double-click `Launch De-identifier.bat`** — Lethe opens in your browser at
-`http://localhost:8731`. Close the black window to stop it. (First launch takes a few
-seconds to start up.)
+| You are… | Install | Run |
+|---|---|---|
+| **on Windows, non-technical** | download the installer from [Releases](https://github.com/moonlight-lupin/lethe/releases) and run it (per-user, no admin rights) | Start-menu / Desktop shortcut |
+| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp] @ git+https://github.com/moonlight-lupin/lethe@v1.0.0"` | `lethe` |
+| **lean (no NLP engine, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.0.0"` | `lethe` |
 
-To (re)install the engine — Lethe standardises on **Python 3.13**:
+[pipx](https://pipx.pypa.io) installs Lethe into its own isolated environment and puts a
+`lethe` command on your PATH — the cross-platform way to run it on macOS and Linux. The
+`[nlp]` extra adds the Presidio + spaCy suggestion engine and the small English model;
+without it Lethe falls back to a built-in regex name-guesser. Either way, running `lethe`
+opens the app in your browser at `http://localhost:8731`.
 
-```powershell
-py -V:3.13 -m venv .venv313
-# Full install (Presidio + spaCy suggestion engine):
-.venv313\Scripts\python.exe -m pip install -r requirements.txt -r requirements-nlp.txt
-# OR lean install (regex name-guesser only, smaller):
-.venv313\Scripts\python.exe -m pip install -r requirements.txt
+> spaCy/Presidio have no Python 3.14 wheels yet, so the `[nlp]` extra requires Python ≤ 3.13.
+
+The Windows installer (and portable bundle) embed their own Python, so they need **no
+Python on the target machine** — see [Packaging](#packaging) for how they're built.
+
+## Run from source (development)
+
+```bash
+py -V:3.13 -m venv .venv313                              # Windows; project standardises on 3.13
+.venv313\Scripts\python.exe -m pip install -e ".[nlp]"   # editable install, with the NLP engine
+.venv313\Scripts\python.exe app.py                       # start the app
 ```
 
-The NLP engine adds the ability to *suggest* counterparties/organisations, not just
-people; Lethe runs fine without it. (spaCy/Presidio have no Python 3.14 wheels yet,
-which is why the project pins 3.13.) Run the checks with `python tests/test_smoke.py`
-and `python tests/test_doc.py`.
+Run the checks with `python tests/test_smoke.py` and `python tests/test_doc.py`.
 
 ## Packaging
 

@@ -12,9 +12,12 @@ from __future__ import annotations
 import os
 import sys
 
-# Run correctly no matter the working directory (launcher / double-click).
+# The Windows portable bundle runs on an embeddable Python whose path is fixed by
+# a ._pth file and does NOT auto-add the script's directory, so add it explicitly
+# here. Harmless for a normal checkout or a pip/pipx install (already importable).
+# Paths to assets and user data are resolved absolutely (see lethe.WEB_STATIC /
+# lethe.DATA_DIR), so no chdir is needed.
 _HERE = os.path.dirname(os.path.abspath(__file__))
-os.chdir(_HERE)
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
@@ -29,6 +32,7 @@ from datetime import datetime, timezone
 from nicegui import app, run, ui
 
 from lethe import (
+    WEB_STATIC,
     Entity,
     _whole_word_regex,
     assign_tokens,
@@ -60,8 +64,10 @@ PRIMARY = "#6a4690"  # dusk amethyst — Lethe's accent within the family
 APP_VERSION = "1.0.0"
 REPO_URL = "https://github.com/moonlight-lupin/lethe"
 
-ui.colors(primary=PRIMARY, secondary="#4a3066", accent="#7d56a6",
-          positive="#3f7d4e", negative="#a83a2c", warning="#9b6f16", dark="#14110b")
+# Quasar brand palette — applied per page inside _build_index() (NiceGUI forbids
+# UI calls in the global scope once an explicit @ui.page is used).
+_BRAND_COLORS = dict(primary=PRIMARY, secondary="#4a3066", accent="#7d56a6",
+                     positive="#3f7d4e", negative="#a83a2c", warning="#9b6f16", dark="#14110b")
 
 # Review-table badge colours, kept in the amethyst/gold family.
 TYPE_COLOR = {"PERSON": "deep-purple-6", "COUNTERPARTY": "amber-8", "OTHER": "pink-7",
@@ -553,8 +559,18 @@ def _guide_dialog():
     return dlg
 
 
-def main():
-    app.add_static_files("/static", os.path.join(_HERE, "web_static"))
+def main() -> None:
+    """Register routes + the index page. Call once before ui.run(). Defining the
+    index as an explicit @ui.page (rather than relying on top-level auto-index
+    elements) means it is served correctly whether Lethe is launched as a script
+    or via the `lethe` console entry point."""
+    app.add_static_files("/static", WEB_STATIC)
+    ui.page("/")(_build_index)
+
+
+def _build_index() -> None:
+    """Build the single-page UI for one client connection."""
+    ui.colors(**_BRAND_COLORS)
     ui.add_head_html(THEME_CSS)
     # remember the last text selection inside the preview, even after a click
     ui.add_body_html("<script>document.addEventListener('mouseup',function(){"
@@ -1359,7 +1375,12 @@ def build_settings_panel():
             ui.html(ABOUT_HTML)
 
 
-if __name__ in {"__main__", "__mp_main__"}:
+def run_app() -> None:
+    """Console entry point (`lethe`): build the UI and start the local server."""
     main()
     ui.run(title="Lethe — Document De-identifier", port=8731, reload=False, show=True,
-           storage_secret="deident-local", favicon="web_static/favicon.svg")
+           storage_secret="deident-local", favicon=os.path.join(WEB_STATIC, "favicon.svg"))
+
+
+if __name__ in {"__main__", "__mp_main__"}:
+    run_app()

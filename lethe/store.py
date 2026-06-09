@@ -4,11 +4,11 @@ from __future__ import annotations
 import json
 import os
 
-from . import APP_ROOT
+from . import DATA_DIR
 from .core import Entity
 
-DICT_PATH = os.path.join(APP_ROOT, "entities.json")
-TYPES_PATH = os.path.join(APP_ROOT, "token_types.json")
+DICT_PATH = os.path.join(DATA_DIR, "entities.json")
+TYPES_PATH = os.path.join(DATA_DIR, "token_types.json")
 
 
 def load_token_types() -> list[str]:

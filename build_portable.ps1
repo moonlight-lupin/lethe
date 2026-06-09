@@ -71,15 +71,15 @@ if (Test-Path $assets) { Copy-Item (Join-Path $assets "*") $dist -Recurse -Force
 # Ship the sample test files (docx/pdf/xlsx) so users can try the formats.
 $samples = Join-Path $proj "samples"
 if (Test-Path $samples) { Copy-Item $samples (Join-Path $dist "samples") -Recurse -Force }
-# Ship the web theme assets (Cinzel wordmark font + favicon) so the reskin
-# renders identically in the portable build — app.py serves these from /static.
-$webStatic = Join-Path $proj "web_static"
-if (Test-Path $webStatic) { Copy-Item $webStatic (Join-Path $dist "web_static") -Recurse -Force }
+# (web_static now lives inside the lethe\ package and is copied with it above.)
 # OPTIONAL: pre-seed the firm's shared counterparty list so every teammate
 # starts with it. Drop a prepared entities.json next to this script to include it.
+# The launcher points LETHE_DATA_DIR at the bundle's data\ folder, so seed there.
 if (Test-Path (Join-Path $proj "entities.shared.json")) {
-  Copy-Item (Join-Path $proj "entities.shared.json") (Join-Path $dist "entities.json") -Force
-  Write-Host "      (seeded shared entities.json)"
+  $dataDir = Join-Path $dist "data"
+  New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+  Copy-Item (Join-Path $proj "entities.shared.json") (Join-Path $dataDir "entities.json") -Force
+  Write-Host "      (seeded shared entities.json into data\)"
 }
 
 Write-Host "6/6  Cleaning + zipping..."
