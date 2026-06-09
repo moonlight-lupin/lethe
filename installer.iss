@@ -1,15 +1,15 @@
-; Inno Setup script for the Document De-identifier.
+; Inno Setup script for Lethe — the document de-identifier.
 ; Builds a per-user (no-admin) installer that wraps the portable bundle.
 ;
 ; Build:  "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-; Output: dist\DeIdentifier-Setup.exe
+; Output: dist\Lethe-<ver>-Setup.exe
 ;
 ; Prereq: dist\DeIdentifier-Portable\ must exist (run build_portable.ps1 first).
-; Silent deploy for IT:  DeIdentifier-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES
+; Silent deploy for IT:  Lethe-<ver>-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES
 
-#define AppName "Document De-identifier"
+#define AppName "Lethe"
 #define AppVer  "1.0.0"
-#define Pub     "Q Investment Partners"
+#define Pub     "Meng Huey"
 
 [Setup]
 AppId={{8F3C2A14-7D9E-4B6A-9C21-DE1D0A11F001}
@@ -19,11 +19,11 @@ AppPublisher={#Pub}
 ; Per-user install -> no administrator rights required:
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-DefaultDirName={localappdata}\Programs\Document De-identifier
+DefaultDirName={localappdata}\Programs\Lethe
 DisableProgramGroupPage=yes
 DefaultGroupName={#AppName}
 OutputDir=dist
-OutputBaseFilename=DeIdentifier-Setup
+OutputBaseFilename=Lethe-{#AppVer}-Setup
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
