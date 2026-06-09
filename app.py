@@ -42,6 +42,7 @@ from lethe import (
     merge_entities,
     nlp_suggester,
     pdf_warnings,
+    read_xlsx_grid,
     redact_document,
     save_entities,
     save_token_types,
@@ -229,6 +230,19 @@ body.body--dark .meander{opacity:.45;background-image:url("__MEANDER_DARK__");}
   border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn);
   border-radius:var(--r-sm);padding:9px 13px;margin-bottom:10px;font-size:12.5px;line-height:1.5;}
 .pdf-warn b{color:var(--warn);}
+/* spreadsheet preview — real tables per sheet */
+.xlsx-preview{max-height:62vh;overflow:auto;background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--r);padding:14px 16px;color:var(--text);}
+.xlsx-sheet{margin-bottom:16px;}
+.xlsx-sheet:last-child{margin-bottom:0;}
+.xlsx-sheet-name{font-family:var(--font-serif);font-weight:600;font-size:12px;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.05em;margin:0 0 5px;}
+.xlsx-preview table{border-collapse:collapse;font-size:12px;
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+.xlsx-preview th,.xlsx-preview td{border:1px solid var(--border);padding:3px 8px;text-align:left;
+  vertical-align:top;white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis;}
+.xlsx-preview th{background:var(--panel2);font-weight:600;position:sticky;top:0;z-index:1;}
+.xlsx-trunc{color:var(--muted);font-size:11px;font-style:italic;margin-top:5px;}
 mark.hl{border-radius:3px;padding:0 1px;color:inherit;background:#dbe8d8;}
 mark.hl-PERSON{background:#e7dcf2;}
 mark.hl-COUNTERPARTY{background:#f0e2c4;}
@@ -442,9 +456,11 @@ def _reference_text(job_id: str, created: str, sources: list[str], token_to_real
     return "\n".join(lines).encode("utf-8")
 
 
-def _preview_html(text: str, items: list) -> str:
-    """Render the document text with every detected item wrapped in a <mark>
-    (data-iid = item index) so the client can highlight on demand."""
+def _mark_html(text: str, items: list) -> str:
+    """Wrap every detected item surface in a <mark> (data-iid = item index),
+    longest-match-wins, with the in-between text HTML-escaped."""
+    if not text:
+        return ""
     spans = []
     for i, it in enumerate(items):
         for s in it.surfaces:
@@ -464,7 +480,36 @@ def _preview_html(text: str, items: list) -> str:
         out.append(f'<mark class="hl hl-{t}" data-iid="{i}">{_html.escape(text[s:e])}</mark>')
         pos = e
     out.append(_html.escape(text[pos:]))
-    return '<div class="doc-preview">' + "".join(out) + "</div>"
+    return "".join(out)
+
+
+def _preview_html(text: str, items: list) -> str:
+    """Document text with detected items highlighted, in a scrollable card."""
+    return '<div class="doc-preview">' + _mark_html(text, items) + "</div>"
+
+
+def _xlsx_preview_html(data: bytes, items: list) -> str:
+    """Render a workbook as real tables (one per sheet) with detected names
+    highlighted in their cells — far more legible than a flat text dump."""
+    out = ['<div class="xlsx-preview">']
+    for name, rows, truncated in read_xlsx_grid(data):
+        out.append('<div class="xlsx-sheet">')
+        out.append(f'<div class="xlsx-sheet-name">{_html.escape(name)}</div>')
+        if not rows:
+            out.append('<div class="muted" style="padding:6px 2px">(empty sheet)</div>')
+        else:
+            out.append("<table>")
+            for ri, row in enumerate(rows):
+                tag = "th" if ri == 0 else "td"
+                cells = "".join(f"<{tag}>{_mark_html(c, items)}</{tag}>" for c in row)
+                out.append(f"<tr>{cells}</tr>")
+            out.append("</table>")
+        if truncated:
+            out.append('<div class="xlsx-trunc">… large sheet truncated in this preview '
+                       "(the full sheet is still de-identified on export).</div>")
+        out.append("</div>")
+    out.append("</div>")
+    return "".join(out)
 
 
 def _guide_dialog():
@@ -540,12 +585,16 @@ def build_deidentify_panel():
     with ui.column().classes("w-full gap-5 pt-5"):
         # ---- add documents ----
         with ui.card().classes("w-full rounded-xl shadow-sm"):
-            ui.label("Add documents").classes("text-base font-medium")
+            with ui.row().classes("items-center justify-between w-full"):
+                ui.label("Add documents").classes("text-base font-medium")
+                ui.button("Start over", icon="restart_alt", on_click=lambda: reset_all()).props(
+                    "flat no-caps dense").tooltip(
+                    "Clear all files, redactions, passphrase and results")
             ui.label("Word, PDF or Excel — one or many. Same name → same token across all of them.").classes(
                 "text-sm text-slate-500")
             with ui.row().classes("items-center gap-4 mt-2 w-full"):
-                ui.upload(label="Drop / browse files", multiple=True, auto_upload=True,
-                          on_upload=lambda e: on_file(e)).props(
+                uploader = ui.upload(label="Drop / browse files", multiple=True, auto_upload=True,
+                                     on_upload=lambda e: on_file(e)).props(
                     'accept=".docx,.pdf,.xlsx,.txt" flat bordered').classes("flex-1")
                 ui.button("Try a sample memo", icon="description",
                           on_click=lambda: on_sample()).props("outline no-caps")
@@ -701,9 +750,6 @@ def build_deidentify_panel():
             if not file_select.value or file_select.value not in names:
                 file_select.value = names[idx]
             f = files[idx]
-            text = extract_text(f["data"], f["kind"])
-            if f["kind"] == "xlsx":
-                text = "(spreadsheet shown as text)\n\n" + text
             banner = ""
             warns = f.get("warnings")
             if warns:
@@ -711,7 +757,11 @@ def build_deidentify_panel():
                 banner = (f'<div class="pdf-warn">⚠ Page(s) {_html.escape(pages)} look image-based — '
                           "their text isn't extracted (no OCR), so any names on them are "
                           "<b>not redacted</b>. Check those pages in the original PDF.</div>")
-            preview_html.content = banner + _preview_html(text, state["items"])
+            if f["kind"] == "xlsx":
+                preview_html.content = banner + _xlsx_preview_html(f["data"], state["items"])
+            else:
+                text = extract_text(f["data"], f["kind"])
+                preview_html.content = banner + _preview_html(text, state["items"])
 
         def on_preview_file(e):
             if e.value in [f["name"] for f in files]:
@@ -775,6 +825,19 @@ def build_deidentify_panel():
             state["preview_idx"] = 0
             render_files.refresh()
             run_detection()
+
+        def reset_all():
+            """Full reset of the De-identify tab: files, manual redactions, the
+            review list, passphrase and the export result — back to a clean slate."""
+            clear_files()
+            pw.value = ""
+            add_dict.value = True
+            result.clear()
+            try:
+                uploader.reset()          # also clear the upload widget's file list
+            except Exception:
+                pass
+            ui.notify("Started over — cleared everything.", color="primary")
 
         async def redact_selection():
             sel = await ui.run_javascript(

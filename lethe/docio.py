@@ -12,10 +12,16 @@ from __future__ import annotations
 
 import io
 import os
+import xml.etree.ElementTree as ET
+import zipfile
 
 from docx import Document
 from openpyxl import load_workbook
 from pypdf import PdfReader
+
+# SpreadsheetML namespace — cell text lives in <si>/<is> elements under this ns.
+_SS_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+_XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 
 try:
     import pdfplumber  # better reading order + table extraction
@@ -135,6 +141,30 @@ def extract_text(data: bytes, kind: str) -> str:
     raise ValueError(f"Unsupported kind: {kind}")
 
 
+def read_xlsx_grid(data: bytes, max_rows: int = 200, max_cols: int = 40):
+    """Read a workbook as a grid for the live preview: a list of
+    (sheet_name, rows, truncated) where rows is a list of lists of cell strings.
+    Capped per sheet so a huge workbook stays responsive."""
+    wb = load_workbook(io.BytesIO(data), data_only=True, read_only=True)
+    sheets = []
+    try:
+        for ws in wb.worksheets:
+            rows, truncated = [], False
+            for ri, row in enumerate(ws.iter_rows(values_only=True)):
+                if ri >= max_rows:
+                    truncated = True
+                    break
+                if len(row) > max_cols:
+                    truncated = True
+                rows.append(["" if c is None else str(c) for c in row[:max_cols]])
+            while rows and not any(c.strip() for c in rows[-1]):
+                rows.pop()                       # trim trailing empty rows
+            sheets.append((ws.title, rows, truncated))
+    finally:
+        wb.close()
+    return sheets
+
+
 # ---- redacted output --------------------------------------------------------
 def _redact_paragraph(paragraph, replace_fn) -> int:
     """Replace text in a paragraph. If anything changes we flatten the
@@ -173,20 +203,63 @@ def _redact_docx(data: bytes, replace_fn) -> tuple[bytes, int]:
     return buf.getvalue(), hits
 
 
-def _redact_xlsx(data: bytes, replace_fn) -> tuple[bytes, int]:
-    wb = load_workbook(io.BytesIO(data))  # keep formulas/formatting
+def _redact_string_table(xml_bytes: bytes, replace_fn, container: str):
+    """Redact the text inside every <si> (shared strings) or <is> (inline
+    strings) element of an OOXML part, leaving the rest of the XML structure
+    intact. A string whose text changes is collapsed to a single <t> (any
+    in-cell rich-text formatting on that one string is lost — the same trade-off
+    we make in Word). Returns (new_bytes, hits) or (None, 0) if nothing changed
+    or the part can't be parsed."""
+    try:
+        ET.register_namespace("", _SS_NS)
+        root = ET.fromstring(xml_bytes)
+    except ET.ParseError:
+        return None, 0
+    t_tag = f"{{{_SS_NS}}}t"
+    cont_tag = f"{{{_SS_NS}}}{container}"
     hits = 0
-    for ws in wb.worksheets:
-        for row in ws.iter_rows():
-            for cell in row:
-                if isinstance(cell.value, str):
-                    new, n = replace_fn(cell.value)
-                    if n:
-                        cell.value = new
-                        hits += n
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue(), hits
+    for cont in root.iter(cont_tag):
+        t_elems = cont.findall(f".//{t_tag}")
+        full = "".join(t.text or "" for t in t_elems)
+        if not full:
+            continue
+        new, n = replace_fn(full)
+        if n and new != full:
+            hits += n
+            for child in list(cont):          # drop existing runs/text
+                cont.remove(child)
+            t = ET.SubElement(cont, t_tag)     # replace with one plain <t>
+            t.set(_XML_SPACE, "preserve")
+            t.text = new
+    if not hits:
+        return None, 0
+    body = ET.tostring(root, encoding="unicode")
+    out = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + body
+    return out.encode("utf-8"), hits
+
+
+def _redact_xlsx(data: bytes, replace_fn) -> tuple[bytes, int]:
+    """Redact an .xlsx by surgically editing only the string parts of the OOXML
+    package and copying every other part byte-for-byte. Unlike a full openpyxl
+    load/save, this preserves charts, images, pivot tables and formatting — so
+    Excel doesn't flag the file for repair."""
+    hits = 0
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(data), "r") as src, \
+            zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            content = src.read(item.filename)
+            name = item.filename
+            if name == "xl/sharedStrings.xml":
+                new, n = _redact_string_table(content, replace_fn, "si")
+                if new is not None:
+                    content, hits = new, hits + n
+            elif name.startswith("xl/worksheets/") and name.endswith(".xml"):
+                new, n = _redact_string_table(content, replace_fn, "is")
+                if new is not None:
+                    content, hits = new, hits + n
+            dst.writestr(item, content)          # ZipInfo preserves metadata
+    return out_buf.getvalue(), hits
 
 
 def _text_to_docx(text: str) -> bytes:
