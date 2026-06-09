@@ -110,7 +110,7 @@ opens the app in your browser at `http://localhost:8731`.
 > spaCy/Presidio have no Python 3.14 wheels yet, so the `[nlp]` extra requires Python ≤ 3.13.
 
 The Windows installer and portable bundle embed their own Python, so they need **no
-Python on the target machine** — see [Packaging & releases](#packaging--releases).
+Python on the target machine**.
 
 ## How it works — the tabs
 
@@ -156,36 +156,6 @@ custom token types and the encrypted `vault/` — lives in a per-user data direc
 (`%APPDATA%\Lethe` on Windows, `~/Library/Application Support/Lethe` on macOS,
 `~/.local/share/Lethe` on Linux), or wherever `$LETHE_DATA_DIR` points (the Windows
 portable bundle sets it to keep data in-folder). It never goes inside the package.
-
-## Run from source (development)
-
-```bash
-py -V:3.13 -m venv .venv313                              # Windows; project standardises on 3.13
-.venv313\Scripts\python.exe -m pip install -e ".[nlp]"   # editable install, with the NLP engine
-.venv313\Scripts\python.exe app.py                       # start the app
-```
-
-Run the checks with `python tests/test_smoke.py` and `python tests/test_doc.py`.
-
-## Packaging & releases
-
-Releases are built by **GitHub Actions** (`.github/workflows/release.yml`): pushing a
-`v*` tag builds the portable bundle and the Inno Setup installer on a clean Windows
-runner, then publishes a draft GitHub Release with `Lethe-<ver>-Setup.exe` and
-`Lethe-<ver>-Portable.zip` attached.
-
-To build locally instead:
-
-```powershell
-./build_portable.ps1                                # -> dist\DeIdentifier-Portable\ + .zip
-winget install --id JRSoftware.InnoSetup -e         # one-time
-& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer.iss   # -> dist\Lethe-1.0.0-Setup.exe
-```
-
-`build_portable.ps1` embeds its own Python 3.13 (so the bundle needs no Python on the
-target). Set `$WithNLP = $true` (default) for the Presidio build or `$false` for the lean
-regex-only build. The installer is per-user (no admin), with Start-Menu/Desktop shortcuts
-and silent mass-deploy (`/VERYSILENT`).
 
 ## Limitations
 
