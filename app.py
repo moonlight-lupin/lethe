@@ -39,6 +39,7 @@ from lethe import (
     build_replacer,
     build_restorer,
     detect,
+    docio,
     extract_text,
     file_kind,
     load_entities,
@@ -364,9 +365,10 @@ The tool reads the **text** of your files. It does **not** touch:
 - **Images & logos inside Word / Excel / PowerPoint** — a counterparty logo, a signature
   image, or any name *inside a picture in an Office file* is not detected (OCR applies
   to PDF pages only).
-- **Scanned / image-only PDF pages** are read with **local OCR** (when the OCR engine is
-  installed — it is in the standard bundle) and marked for review; OCR isn't perfect, so
-  always check those pages. Without the engine they're flagged as unread instead.
+- **Scanned / image-only PDF pages** are read with **local OCR** (fully on this machine —
+  no cloud; English works offline, and adding a language in Settings enables OCR for that
+  script too) and marked for review; OCR isn't perfect, so always check those pages. Any
+  page OCR still can't read is flagged as unread rather than dropped silently.
 - Text in **shapes, text boxes, charts or embedded objects**, and document
   **metadata, comments or tracked changes** — these may still carry names.
 - In **Excel**, a name buried inside a **formula** (e.g. `="Acme "&A1`) — names are
@@ -811,9 +813,9 @@ def build_deidentify_panel():
             soft = [w for w in warns if w.get("ocr")]
             if hard:
                 pages = ", ".join(str(w["page"]) for w in hard)
-                banner += (f'<div class="pdf-warn">⚠ Page(s) {_html.escape(pages)} look image-based — '
-                           "their text isn't extracted (no OCR engine available), so any names on "
-                           "them are <b>not redacted</b>. Check those pages in the original PDF.</div>")
+                banner += (f'<div class="pdf-warn">⚠ Page(s) {_html.escape(pages)} look image-based and '
+                           "OCR couldn't read any text on them, so any names there are <b>not "
+                           "redacted</b>. Check those pages in the original PDF.</div>")
             if soft:
                 pages = ", ".join(str(w["page"]) for w in soft)
                 banner += (f'<div class="pdf-ocr">🔍 Page(s) {_html.escape(pages)} were image-based — '
@@ -877,8 +879,8 @@ def build_deidentify_panel():
             soft = [w for w in warns if w.get("ocr")]
             if hard:
                 pages = ", ".join(str(w["page"]) for w in hard)
-                ui.notify(f"⚠ {f.name}: page(s) {pages} look image-based — text/names there "
-                          "can't be detected (no OCR engine). Review them in the original PDF.",
+                ui.notify(f"⚠ {f.name}: page(s) {pages} look image-based and OCR couldn't read them — "
+                          "names there can't be detected. Review them in the original PDF.",
                           type="warning", multi_line=True, timeout=10000)
             elif soft:
                 pages = ", ".join(str(w["page"]) for w in soft)
@@ -1270,10 +1272,12 @@ def build_dictionary_panel():
 def build_settings_panel():
     with ui.column().classes("w-full gap-5 pt-5"):
         with ui.card().classes("w-full rounded-xl shadow-sm"):
-            ui.label("Detection languages").classes("text-base font-medium")
-            ui.label("The app ships with English to stay small. Download an extra language only if you "
-                     "need to auto-suggest names in that script — your dictionary works in every language "
-                     "regardless. Downloading needs internet (one-off).").classes("text-sm text-slate-500")
+            ui.label("Detection & OCR languages").classes("text-base font-medium")
+            ui.label("English is built in and works fully offline (including OCR of scanned pages). "
+                     "Adding a language installs BOTH its name-detection model and its OCR model, so "
+                     "scanned documents in that script are read too. Your dictionary works in every "
+                     "language regardless. Adding a language needs internet (one-off).").classes(
+                "text-sm text-slate-500")
             if not nlp_suggester.available():
                 ui.label("⚠ The NLP suggestion engine isn't available in this build — only the dictionary "
                          "and patterns are active.").classes("text-sm text-amber-700 mt-1")
@@ -1286,7 +1290,8 @@ def build_settings_panel():
                     for L in nlp_suggester.language_status():
                         with ui.row().classes("items-center gap-3 w-full border-b py-2"):
                             ui.label(L["label"]).classes("font-medium").style("width:110px")
-                            ui.label(L["model"]).classes("text-xs text-slate-500").style("width:165px")
+                            ui.label("Name detection + OCR").classes(
+                                "text-xs text-slate-500").style("width:165px")
                             ui.label(L["size"]).classes("text-xs text-slate-400").style("width:70px")
                             ui.space()
                             if L["builtin"]:
@@ -1294,29 +1299,41 @@ def build_settings_panel():
                             elif L["installed"]:
                                 ui.badge("Installed", color="teal-7")
                                 ui.button("Remove", icon="delete",
-                                          on_click=lambda c=L["code"], n=L["label"]: do_remove(c, n)).props(
-                                    "flat no-caps dense color=grey-7")
+                                          on_click=lambda c=L["code"], n=L["label"], o=L["ocr"]:
+                                          do_remove(c, n, o)).props("flat no-caps dense color=grey-7")
                             else:
                                 ui.button("Download", icon="download",
-                                          on_click=lambda c=L["code"], n=L["label"]: do_download(c, n)).props(
-                                    "outline no-caps dense")
+                                          on_click=lambda c=L["code"], n=L["label"], o=L["ocr"]:
+                                          do_download(c, n, o)).props("outline no-caps dense")
 
-            async def do_download(code, label):
-                note = ui.notification(f"Downloading {label} model… (this can take a minute)",
+            async def do_download(code, label, ocr):
+                note = ui.notification(f"Downloading {label} (name detection + OCR)… this can take a minute",
                                        spinner=True, timeout=None)
                 ok, log = await run.io_bound(nlp_suggester.download_language, code)
+                ocr_ok = True
+                if ok and ocr:
+                    ocr_ok, ocr_log = await run.io_bound(docio.download_ocr_language, ocr)
+                    log = f"{log}\n--- OCR ---\n{ocr_log}"
                 note.dismiss()
-                if ok:
-                    ui.notify(f"{label} model installed — now active for {label} text", color="positive")
+                if ok and ocr_ok:
+                    ui.notify(f"{label} installed — name detection and OCR now active for {label} text",
+                              color="positive")
+                elif ok and not ocr_ok:
+                    ui.notify(f"{label} detection installed, but its OCR model didn't download "
+                              "(no internet, or blocked). See the console window.",
+                              color="warning", multi_line=True)
+                    print(f"\n[OCR download: {label}] FAILED:\n{log}\n")
                 else:
                     ui.notify(f"Couldn't install {label} (no internet, or blocked). See the console window.",
                               color="negative", multi_line=True)
                     print(f"\n[language download: {label}] FAILED:\n{log}\n")
                 render.refresh()
 
-            async def do_remove(code, label):
-                note = ui.notification(f"Removing {label} model…", spinner=True, timeout=None)
+            async def do_remove(code, label, ocr):
+                note = ui.notification(f"Removing {label}…", spinner=True, timeout=None)
                 ok, log = await run.io_bound(nlp_suggester.remove_language, code)
+                if ocr:
+                    await run.io_bound(docio.remove_ocr_language, ocr)
                 note.dismiss()
                 ui.notify(f"{label} removed" if ok else f"Couldn't remove {label}",
                           color="positive" if ok else "negative")

@@ -18,6 +18,11 @@ dist/DeIdentifier-Setup.exe
 dist/_embed.zip
 dist/Output/
 
+# ---- OCR language models (large binaries; build_portable.ps1 fetches eng on demand,
+#      users download the rest from Settings) ----
+tessdata/
+*.traineddata
+
 # ---- Temp / logs ----
 _e.txt
 _o.txt

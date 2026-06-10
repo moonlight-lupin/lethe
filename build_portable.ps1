@@ -81,6 +81,20 @@ if (Test-Path (Join-Path $proj "entities.shared.json")) {
   Copy-Item (Join-Path $proj "entities.shared.json") (Join-Path $dataDir "entities.json") -Force
   Write-Host "      (seeded shared entities.json into data\)"
 }
+# Bundle the offline English OCR model so scanned-page OCR works with NO internet
+# on the target PC. It goes into data\tessdata (LETHE_DATA_DIR), where the engine
+# looks; extra languages are downloaded by the user from Settings into the same
+# folder. Fetched once from tessdata_best (cached next to this script for reuse).
+$tdDst = Join-Path $dist "data\tessdata"
+New-Item -ItemType Directory -Force -Path $tdDst | Out-Null
+$engSrc = Join-Path $proj "tessdata\eng.traineddata"
+if (-not (Test-Path $engSrc)) {
+  Write-Host "      Fetching English OCR model (eng.traineddata, ~15 MB)..."
+  New-Item -ItemType Directory -Force -Path (Join-Path $proj "tessdata") | Out-Null
+  Invoke-WebRequest -Uri "https://github.com/tesseract-ocr/tessdata_best/raw/main/eng.traineddata" `
+    -OutFile $engSrc -UseBasicParsing
+}
+Copy-Item $engSrc (Join-Path $tdDst "eng.traineddata") -Force
 
 Write-Host "6/6  Cleaning + zipping..."
 Remove-Item -LiteralPath (Join-Path $runtime "get-pip.py") -Force -ErrorAction SilentlyContinue

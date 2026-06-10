@@ -10,9 +10,12 @@ redact_document(...) -> writes a de-identified file IN THE SAME FORMAT where
 """
 from __future__ import annotations
 
+import contextlib
 import functools
 import io
 import os
+import sys
+import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -20,6 +23,30 @@ from docx import Document
 from openpyxl import load_workbook
 from pptx import Presentation
 from pypdf import PdfReader
+
+from . import DATA_DIR
+
+
+@contextlib.contextmanager
+def _suppress_native_stderr():
+    """Mute OS-level stderr around a call. Tesseract/PDFium emit warnings ("Image
+    too small to scale", vertical-script fallbacks, …) straight to file
+    descriptor 2, bypassing Python — this keeps the app's console window clean.
+    Python exceptions still propagate normally."""
+    try:
+        fd = sys.stderr.fileno()
+    except (AttributeError, ValueError, io.UnsupportedOperation):
+        yield  # no real stderr (e.g. captured) — nothing to mute
+        return
+    saved = os.dup(fd)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    try:
+        os.dup2(devnull, fd)
+        yield
+    finally:
+        os.dup2(saved, fd)
+        os.close(devnull)
+        os.close(saved)
 
 # SpreadsheetML namespace — cell text lives in <si>/<is> elements under this ns.
 _SS_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -42,6 +69,77 @@ def ocr_available() -> bool:
     """True when the local OCR engine (liteparse) is installed — scanned /
     image-based PDF pages are then read instead of merely warned about."""
     return _HAS_LITEPARSE
+
+
+# ---- OCR language data (offline Tesseract models) ----------------------------
+# The OCR engine reads its language models (`<code>.traineddata`) from a folder
+# under DATA_DIR. English is bundled by the Windows build so OCR works fully
+# offline; extra languages are downloaded on demand from the Settings tab
+# (alongside that language's name-detection model) into this same folder. The
+# engine never reaches the internet at OCR time — it only reads these local files.
+# (A pip/pipx install ships no bundled model; liteparse then fetches English from
+# tessdata_best on first use, after which it too is offline.)
+_TESSDATA_BEST = "https://github.com/tesseract-ocr/tessdata_best/raw/main/{code}.traineddata"
+
+
+def tessdata_dir() -> str:
+    """Folder holding the offline OCR models — `<DATA_DIR>/tessdata`, alongside
+    the user's other data (entities.json, vault/). Created on first use."""
+    d = os.path.join(DATA_DIR, "tessdata")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def installed_ocr_languages() -> list[str]:
+    """Primary Tesseract codes to run an OCR pass for (e.g. ['eng', 'jpn']),
+    English first. Excludes `*_vert` helper models, which Tesseract loads
+    automatically alongside their base language."""
+    try:
+        codes = [f[:-len(".traineddata")] for f in os.listdir(tessdata_dir())
+                 if f.endswith(".traineddata") and not f.endswith("_vert.traineddata")]
+    except OSError:
+        codes = []
+    return (["eng"] if "eng" in codes else []) + sorted(c for c in codes if c != "eng")
+
+
+def download_ocr_language(codes: list[str]) -> tuple[bool, str]:
+    """Fetch one or more Tesseract `tessdata_best` models into the offline
+    folder. Needs internet (an explicit, user-initiated Settings action — the
+    same moment the spaCy model is fetched). Returns (ok, log)."""
+    d = tessdata_dir()
+    logs: list[str] = []
+    for code in codes:
+        dest = os.path.join(d, f"{code}.traineddata")
+        if os.path.exists(dest):
+            logs.append(f"{code}: already present")
+            continue
+        tmp = dest + ".part"
+        try:
+            urllib.request.urlretrieve(_TESSDATA_BEST.format(code=code), tmp)
+            os.replace(tmp, dest)
+            logs.append(f"{code}: downloaded")
+        except Exception as exc:  # noqa: BLE001
+            try:
+                os.path.exists(tmp) and os.remove(tmp)
+            except OSError:
+                pass
+            return False, "\n".join(logs + [f"{code}: download failed — {exc}"])
+    return True, "\n".join(logs)
+
+
+def remove_ocr_language(codes: list[str]) -> tuple[bool, str]:
+    """Delete added OCR models. The bundled English baseline is kept."""
+    d = tessdata_dir()
+    for code in codes:
+        if code == "eng":
+            continue
+        p = os.path.join(d, f"{code}.traineddata")
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except OSError as exc:
+            return False, f"{code}: remove failed — {exc}"
+    return True, "removed"
 
 # A page that carries a raster image yet yields fewer than this many words is
 # treated as image-based (a scan, or a figure/chart with baked-in text) — names
@@ -102,22 +200,39 @@ def _merge_ocr(data: bytes, pages: list[dict]) -> None:
                if pg["n_images"] > 0 and pg["n_words"] < _IMAGE_PAGE_WORD_THRESHOLD]
     if not (flagged and _HAS_LITEPARSE):
         return
-    try:
-        targets = ",".join(str(pg["n"]) for pg in flagged)
-        res = _liteparse.LiteParse(ocr_enabled=True, target_pages=targets,
-                                   quiet=True).parse(data)
-        # get_page() is keyed by ORIGINAL page number (returns None for pages
-        # outside target_pages), so query each flagged page directly.
-        by_num = {}
+    targets = ",".join(str(pg["n"]) for pg in flagged)
+    td = tessdata_dir()
+    # Models are read from the offline folder, so the engine never reaches the
+    # internet at OCR time. This engine has no multi-language ("eng+jpn") mode,
+    # so when the user has added languages we OCR each flagged page once per
+    # installed language and keep the highest-confidence reading. English-only
+    # (the default) is a single pass. Native Tesseract/PDFium warnings are muted.
+    langs = installed_ocr_languages() or ["eng"]
+    best: dict[int, tuple] = {}  # original page number -> (score, text)
+    for lang in langs:
+        try:
+            with _suppress_native_stderr():
+                res = _liteparse.LiteParse(ocr_enabled=True, target_pages=targets, quiet=True,
+                                           ocr_language=lang, tessdata_path=td).parse(data)
+        except Exception:
+            continue  # OCR is best-effort; a failed language is simply skipped
         for pg in flagged:
-            p = res.get_page(pg["n"])
-            if p is not None:
-                by_num[pg["n"]] = (p.text or "").strip()
-    except Exception:
-        return  # OCR is best-effort; the un-OCR'd warning path still applies
+            # get_page() is keyed by ORIGINAL page number (None outside targets).
+            try:
+                p = res.get_page(pg["n"])
+            except Exception:
+                p = None
+            text = (p.text or "").strip() if p is not None else ""
+            if not text:
+                continue
+            items = getattr(p, "text_items", None) or []
+            confs = [c for it in items if (c := getattr(it, "confidence", None)) is not None]
+            score = (sum(confs) / len(confs) if confs else 0.0, len(text))
+            if pg["n"] not in best or score > best[pg["n"]][0]:
+                best[pg["n"]] = (score, text)
     for pg in flagged:
-        text = by_num.get(pg["n"], "")
-        if text:
+        if pg["n"] in best:
+            text = best[pg["n"]][1]
             pg["narrative"] = f"{pg['narrative']}\n{text}".strip() if pg["narrative"] else text
             pg["n_words"] = len(pg["narrative"].split()) + sum(
                 len(c.split()) for tb in pg["tables"] for row in tb for c in row)

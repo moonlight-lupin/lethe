@@ -22,15 +22,22 @@ _BASE = "https://github.com/explosion/spacy-models/releases/download"
 
 # Each language: spaCy model + the unicode ranges that imply "this script is
 # present in the text" (None = always run when installed, e.g. Latin scripts).
+# "ocr" lists the Tesseract model code(s) downloaded alongside the spaCy model so
+# that adding a language enables BOTH name detection and OCR for that script.
+# English ("eng") ships bundled offline, so it carries no download here. "size" is
+# the COMBINED download (spaCy model + OCR model): zh = 48 + 24 (chi_sim+chi_tra),
+# ja = 70 + 14 (jpn), ko = 36 + 12 (kor).
 LANGUAGES = [
     {"code": "en", "label": "English", "model": "en_core_web_sm", "version": "3.8.0",
-     "builtin": True, "ranges": None, "size": "built-in"},
+     "builtin": True, "ranges": None, "size": "built-in", "ocr": []},
     {"code": "zh", "label": "Chinese", "model": "zh_core_web_sm", "version": "3.8.0",
-     "builtin": False, "ranges": [(0x3400, 0x9FFF), (0xF900, 0xFAFF)], "size": "~48 MB"},
+     "builtin": False, "ranges": [(0x3400, 0x9FFF), (0xF900, 0xFAFF)], "size": "~72 MB",
+     "ocr": ["chi_sim", "chi_tra"]},
     {"code": "ja", "label": "Japanese", "model": "ja_core_news_sm", "version": "3.8.0",
-     "builtin": False, "ranges": [(0x3040, 0x30FF), (0x4E00, 0x9FFF), (0xFF66, 0xFF9F)], "size": "~70 MB"},
+     "builtin": False, "ranges": [(0x3040, 0x30FF), (0x4E00, 0x9FFF), (0xFF66, 0xFF9F)], "size": "~84 MB",
+     "ocr": ["jpn"]},
     {"code": "ko", "label": "Korean", "model": "ko_core_news_sm", "version": "3.8.0",
-     "builtin": False, "ranges": [(0xAC00, 0xD7AF)], "size": "~36 MB"},
+     "builtin": False, "ranges": [(0xAC00, 0xD7AF)], "size": "~48 MB", "ocr": ["kor"]},
 ]
 
 
@@ -81,7 +88,8 @@ def available() -> bool:
 
 def language_status() -> list[dict]:
     return [{"code": L["code"], "label": L["label"], "model": L["model"], "size": L["size"],
-             "builtin": L["builtin"], "installed": is_installed(L["model"])}
+             "builtin": L["builtin"], "installed": is_installed(L["model"]),
+             "ocr": list(L["ocr"])}
             for L in LANGUAGES]
 
 

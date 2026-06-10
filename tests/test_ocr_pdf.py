@@ -7,12 +7,21 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lethe import (Entity, assign_tokens, build_replacer, detect, extract_text,
+from lethe import (Entity, assign_tokens, build_replacer, detect,
+                   download_ocr_language, extract_text, installed_ocr_languages,
                    ocr_available, pdf_warnings, redact_document)
 
 if not ocr_available():
     print("SKIP: liteparse not installed — image pages are warned, not read")
     sys.exit(0)
+
+# OCR reads its model from the offline tessdata folder; ensure English is there
+# (the Windows build bundles it; here we fetch it once if missing — needs internet).
+if "eng" not in installed_ocr_languages():
+    ok, log = download_ocr_language(["eng"])
+    if not ok:
+        print(f"SKIP: could not obtain the English OCR model (offline?):\n{log}")
+        sys.exit(0)
 
 from docx import Document
 from fpdf import FPDF

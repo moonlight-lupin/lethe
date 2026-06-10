@@ -50,12 +50,15 @@ from .core import (  # noqa: E402
     detect,
 )
 from .docio import (  # noqa: E402
+    download_ocr_language,
     extract_text,
     file_kind,
+    installed_ocr_languages,
     ocr_available,
     pdf_warnings,
     read_xlsx_grid,
     redact_document,
+    remove_ocr_language,
 )
 from .store import (  # noqa: E402
     load_entities,
@@ -75,6 +78,8 @@ __all__ = [
     # document I/O
     "extract_text", "file_kind", "ocr_available", "pdf_warnings", "read_xlsx_grid",
     "redact_document",
+    # offline OCR language data
+    "download_ocr_language", "installed_ocr_languages", "remove_ocr_language",
     # entity dictionary
     "load_entities", "merge_entities", "save_entities",
     # user-defined token types

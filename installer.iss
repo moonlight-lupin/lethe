@@ -53,10 +53,12 @@ Filename: "{app}\Launch De-identifier.bat"; Description: "Launch {#AppName} now"
   Flags: postinstall shellexec skipifsilent nowait
 
 [UninstallDelete]
-; Remove the whole bundled runtime (incl. .pyc caches the app regenerates at
-; run time, which Inno doesn't track). User data (vault\, entities.json,
-; downloaded language models live under runtime) — note: language models ARE
-; under runtime, so they go too; the dictionary + vault at {app} root are kept
-; so a reinstall preserves them.
+; Remove the bundled runtime (incl. .pyc caches the app regenerates at run time,
+; which Inno doesn't track) and the OCR language models under data\tessdata (the
+; bundled English one plus any the user downloaded — all re-downloadable, not
+; user data). The downloaded spaCy detection models live under runtime\, so they
+; go with it. The user's dictionary + vault under data\ are kept so a reinstall
+; preserves them.
 Type: filesandordirs; Name: "{app}\runtime"
+Type: filesandordirs; Name: "{app}\data\tessdata"
 Type: filesandordirs; Name: "{app}\__pycache__"

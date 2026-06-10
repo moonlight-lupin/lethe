@@ -82,16 +82,19 @@ each job is encrypted with a passphrase and stored only on your computer.
   notice header** instructing readers/AIs to cite by source page and keep the
   `[TOKEN_NNN]` placeholders verbatim.
 - **Local OCR for scanned pages:** PDF pages that are scans/figures with no extractable
-  text are read with a **fully-local OCR engine** (PDFium + bundled Tesseract via
-  `liteparse` — no cloud, ~16 MB) and their names detected and redacted like any other
-  text; those pages are marked for careful review since OCR isn't perfect. Without the
-  OCR extra installed, such pages are flagged instead, so the gap is never silent.
+  text are read with a **fully-local OCR engine** (PDFium + Tesseract via `liteparse` — no
+  cloud) and their names detected and redacted like any other text; those pages are marked
+  for careful review since OCR isn't perfect. The Windows build **bundles the English
+  model so OCR runs fully offline**; any page OCR still can't read is flagged rather than
+  silently dropped.
 - **Encrypted vault:** each job's token→name map is sealed with your passphrase
   (PBKDF2 → Fernet). Lose the passphrase and that job is unrecoverable *by design*.
 - **Review before anything is written:** Lethe shows every proposed redaction,
   highlighted in the document — nothing is changed until you confirm.
-- **Multi-language detection:** download extra spaCy models (Chinese, Japanese,
-  Korean, …) from the Settings tab; your dictionary works in every language regardless.
+- **Multi-language (detection + OCR):** adding a language in Settings (Chinese, Japanese,
+  Korean, …) installs both its name-detection model *and* its OCR model, so scanned
+  documents in that script are read too. English works offline out of the box; extra
+  languages are a one-off online download. Your dictionary works in every language regardless.
 - **Themed desktop UI:** a NiceGUI app with a classical light/dark "river of oblivion"
   skin.
 - **Ships everywhere:** a Windows installer and portable bundle (no Python needed), or
