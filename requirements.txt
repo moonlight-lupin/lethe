@@ -1,5 +1,6 @@
 nicegui
 python-docx
+python-pptx
 openpyxl
 pypdf
 pdfplumber

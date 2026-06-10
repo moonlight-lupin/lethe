@@ -41,7 +41,7 @@ Lethe restores every real name afterwards.
 
 Lethe sits between you and the AI as a **local privacy gate**:
 
-1. **De-identify** — Drop in a Word, PDF or Excel file. Lethe finds the people and
+1. **De-identify** — Drop in a Word, PowerPoint, PDF or Excel file. Lethe finds the people and
    counterparties (from your dictionary, pattern rules and an optional NLP engine) and
    replaces each with a stable placeholder token — `[PERSON_001]`, `[COUNTERPARTY_001]`.
    You get back a de-identified copy in the **same format**, plus a **Job ID**. The same
@@ -73,7 +73,9 @@ each job is encrypted with a passphrase and stored only on your computer.
 - **Custom token types:** beyond the built-in PERSON / COUNTERPARTY / OTHER, define your
   own categories in Settings (e.g. `PROJECT`, `FUND`) — they appear in the Type dropdowns
   and tokenise as `[PROJECT_001]`.
-- **Format-preserving:** Word stays Word, Excel stays Excel (formulas preserved).
+- **Format-preserving:** Word stays Word, PowerPoint stays PowerPoint (slides, tables,
+  speaker notes and master/layout text are all redacted), Excel stays Excel (formulas
+  preserved).
   PDFs are rebuilt as a de-identified Word file (via **pdfplumber**) — **tables become
   real Word tables**, and each source page gets a **`Page N` heading** so downstream
   tools can quote against the *original* PDF pages. The file opens with an **agent-facing
@@ -168,7 +170,8 @@ portable bundle sets it to keep data in-folder). It never goes inside the packag
 - **PDF page numbers:** the output's `Page N` headings refer to the *original* PDF pages
   (for citation); the Word file's own rendered pagination won't match the source.
 - **Text in shapes, text boxes, embedded objects, metadata, comments and tracked
-  changes is not read** — these may still carry names.
+  changes is not read** — these may still carry names. In **PowerPoint**, text inside
+  charts and SmartArt is likewise not read.
 - In **Word**, a line containing a redacted name keeps its text but may lose fine
   in-line formatting (bold/italic within that line). Correct redaction is prioritised
   over formatting fidelity.

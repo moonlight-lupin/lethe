@@ -17,6 +17,7 @@ import zipfile
 
 from docx import Document
 from openpyxl import load_workbook
+from pptx import Presentation
 from pypdf import PdfReader
 
 # SpreadsheetML namespace — cell text lives in <si>/<is> elements under this ns.
@@ -38,7 +39,40 @@ _IMAGE_PAGE_WORD_THRESHOLD = 20
 
 def file_kind(filename: str) -> str:
     ext = os.path.splitext(filename)[1].lower()
-    return {".docx": "docx", ".pdf": "pdf", ".xlsx": "xlsx", ".txt": "txt"}.get(ext, "")
+    return {".docx": "docx", ".pdf": "pdf", ".xlsx": "xlsx", ".pptx": "pptx",
+            ".txt": "txt"}.get(ext, "")
+
+
+# ---- PowerPoint helpers ------------------------------------------------------
+def _iter_pptx_shapes(shapes):
+    """All shapes on a slide/master/layout, descending into grouped shapes."""
+    for shp in shapes:
+        if getattr(shp, "shape_type", None) == 6:  # MSO_SHAPE_TYPE.GROUP
+            yield from _iter_pptx_shapes(shp.shapes)
+        else:
+            yield shp
+
+
+def _iter_pptx_text_frames(prs):
+    """Every text frame in the deck: slide shapes (incl. groups), table cells,
+    speaker notes, and slide-master/layout shapes (headers, footers, fixed text)."""
+    def from_shapes(shapes):
+        for shp in _iter_pptx_shapes(shapes):
+            if getattr(shp, "has_text_frame", False):
+                yield shp.text_frame
+            if getattr(shp, "has_table", False):
+                for row in shp.table.rows:
+                    for cell in row.cells:
+                        yield cell.text_frame
+
+    for slide in prs.slides:
+        yield from from_shapes(slide.shapes)
+        if slide.has_notes_slide:
+            yield slide.notes_slide.notes_text_frame
+    for master in prs.slide_masters:
+        yield from from_shapes(master.shapes)
+        for layout in master.slide_layouts:
+            yield from from_shapes(layout.shapes)
 
 
 # ---- PDF page model ---------------------------------------------------------
@@ -137,6 +171,29 @@ def extract_text(data: bytes, kind: str) -> str:
             for tb in pg["tables"]:
                 for row in tb:
                     parts.append("\t".join(row))
+        return "\n".join(parts)
+    if kind == "pptx":
+        prs = Presentation(io.BytesIO(data))
+        parts = []
+        for i, slide in enumerate(prs.slides, 1):
+            parts.append(f"Slide {i}")
+            for shp in _iter_pptx_shapes(slide.shapes):
+                if getattr(shp, "has_text_frame", False) and shp.text_frame.text.strip():
+                    parts.append(shp.text_frame.text)
+                if getattr(shp, "has_table", False):
+                    for row in shp.table.rows:
+                        parts.append("\t".join(cell.text for cell in row.cells))
+            if slide.has_notes_slide and slide.notes_slide.notes_text_frame.text.strip():
+                parts.append("Notes: " + slide.notes_slide.notes_text_frame.text)
+        master_bits = []
+        for master in prs.slide_masters:
+            for shapes in [master.shapes] + [lo.shapes for lo in master.slide_layouts]:
+                for shp in _iter_pptx_shapes(shapes):
+                    if getattr(shp, "has_text_frame", False) and shp.text_frame.text.strip():
+                        master_bits.append(shp.text_frame.text)
+        if master_bits:
+            parts.append("Master / layout text")
+            parts.extend(master_bits)
         return "\n".join(parts)
     raise ValueError(f"Unsupported kind: {kind}")
 
@@ -262,6 +319,30 @@ def _redact_xlsx(data: bytes, replace_fn) -> tuple[bytes, int]:
     return out_buf.getvalue(), hits
 
 
+def _redact_pptx(data: bytes, replace_fn) -> tuple[bytes, int]:
+    """Redact a PowerPoint deck in place — slide text (incl. grouped shapes),
+    tables, speaker notes and master/layout text — and return a working .pptx.
+    As in Word, a paragraph whose text changes is flattened to a single run
+    (in-line mixed formatting within that one paragraph is lost; the redaction
+    is guaranteed correct)."""
+    prs = Presentation(io.BytesIO(data))
+    hits = 0
+    for tf in _iter_pptx_text_frames(prs):
+        for p in tf.paragraphs:
+            original = "".join(run.text for run in p.runs)
+            if not original:
+                continue
+            new, n = replace_fn(original)
+            if n and new != original:
+                hits += n
+                for run in p.runs:
+                    run.text = ""
+                p.runs[0].text = new
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue(), hits
+
+
 def _text_to_docx(text: str) -> bytes:
     doc = Document()
     for line in text.split("\n"):
@@ -354,6 +435,9 @@ def redact_document(data: bytes, kind: str, replace_fn) -> tuple[bytes, str, int
     if kind == "txt":
         new, hits = replace_fn(data.decode("utf-8", errors="replace"))
         return new.encode("utf-8"), ".txt", hits
+    if kind == "pptx":
+        out, hits = _redact_pptx(data, replace_fn)
+        return out, ".pptx", hits
     if kind == "pdf":
         out, hits = _pdf_to_docx(_read_pdf(data), replace_fn)
         return out, ".docx", hits

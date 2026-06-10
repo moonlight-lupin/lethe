@@ -17,6 +17,7 @@ keywords = ["pii", "de-identification", "redaction", "privacy", "nicegui", "pres
 dependencies = [
     "nicegui",
     "python-docx",
+    "python-pptx",
     "openpyxl",
     "pypdf",
     "pdfplumber",

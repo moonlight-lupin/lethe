@@ -307,7 +307,7 @@ then puts the real names back into the AI's reply. Everything runs on this
 computer; nothing is ever sent anywhere.
 
 ### 1 · De-identify
-1. Drag in one or more **Word / PDF / Excel** files (or click *Try a sample memo*).
+1. Drag in one or more **Word / PowerPoint / PDF / Excel** files (or click *Try a sample memo*).
 2. The right pane shows the document with detected names **highlighted**
    (amethyst = person, gold = counterparty, grey = email/phone/account).
 3. In the **Review** list:
@@ -373,6 +373,8 @@ review are the real safeguard.
 ### Good to know
 - **Keep your passphrase + Job ID together** — you need both to reverse a job.
 - A **blank passphrase** means the reversal key is saved unprotected.
+- **PowerPoint** stays PowerPoint — slides, tables, speaker notes and master text are
+  all redacted (text inside charts / SmartArt isn't read).
 - **PDFs** come back as Word — tables stay tables, and each page gets a *Page N*
   heading (matching the original PDF) so you can cite pages. The file opens with a short
   notice telling an AI to cite by source page and keep the tokens intact. Image/scan
@@ -637,12 +639,12 @@ def build_deidentify_panel():
                 ui.button("Start over", icon="restart_alt", on_click=lambda: reset_all()).props(
                     "flat no-caps dense").tooltip(
                     "Clear all files, redactions, passphrase and results")
-            ui.label("Word, PDF or Excel — one or many. Same name → same token across all of them.").classes(
+            ui.label("Word, PowerPoint, PDF or Excel — one or many. Same name → same token across all of them.").classes(
                 "text-sm text-slate-500")
             with ui.row().classes("items-center gap-4 mt-2 w-full"):
                 uploader = ui.upload(label="Drop / browse files", multiple=True, auto_upload=True,
                                      on_upload=lambda e: on_file(e)).props(
-                    'accept=".docx,.pdf,.xlsx,.txt" flat bordered').classes("flex-1")
+                    'accept=".docx,.pptx,.pdf,.xlsx,.txt" flat bordered').classes("flex-1")
                 ui.button("Try a sample memo", icon="description",
                           on_click=lambda: on_sample()).props("outline no-caps")
             files_row = ui.row().classes("gap-2 flex-wrap mt-1")
@@ -1076,8 +1078,8 @@ def build_reidentify_panel():
             ui.label("Give it the AI's reply — upload the file to get the SAME format back, "
                      "or paste text.").classes("text-sm text-slate-500 mt-1")
             with ui.row().classes("items-center gap-2"):
-                ui.upload(label="Upload the AI's .docx / .xlsx / .txt", auto_upload=True,
-                          on_upload=lambda e: on_upload_ai(e)).props('accept=".docx,.xlsx,.txt" flat bordered')
+                ui.upload(label="Upload the AI's .docx / .pptx / .xlsx / .txt", auto_upload=True,
+                          on_upload=lambda e: on_upload_ai(e)).props('accept=".docx,.pptx,.xlsx,.txt" flat bordered')
                 upload_note = ui.label("").classes("text-xs text-teal-700")
                 clear_btn = ui.button(icon="close", on_click=lambda: clear_upload()).props(
                     "flat round dense color=grey-7").tooltip("Clear uploaded file")

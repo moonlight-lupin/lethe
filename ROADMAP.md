@@ -5,13 +5,14 @@ Presidio+spaCy suggestions, encrypted reversible vault, custom token types,
 table-aware PDF→Word with `Page N` anchors, xlsx OOXML-surgery redaction,
 cross-platform pipx install + Windows installer.
 
-## Next (v1.1 candidates)
+## Done on main (lands in v1.1)
 
-- **PowerPoint (.pptx) support** — format-preserving, in the spirit of the docx
-  path: walk shapes / text frames / tables with `python-pptx`, replace runs,
-  return a working `.pptx`. Decks are dense with counterparty names, so this is
-  the highest-value new format. (Slide notes + master/layout text included;
-  text inside images stays out of scope, as everywhere.)
+- **PowerPoint (.pptx) support** — format-preserving via `python-pptx`: slide
+  text (incl. grouped shapes), tables, speaker notes and master/layout text are
+  redacted and a working `.pptx` comes back. Text inside charts/SmartArt is out
+  of scope (documented), as is text in images, like everywhere else.
+
+## Next (v1.1 candidates)
 
 - **OCR for scanned / image-based PDF pages** — today Lethe *flags* image pages
   ("names here can't be detected — no OCR"); with a local OCR engine those pages
