@@ -10,6 +10,11 @@
   Nothing ever leaves your machine: no cloud, no API key, no internet call.
 </p>
 
+<p align="center">
+  <img src="docs/demo.gif" width="820"
+       alt="Lethe demo: detect names in a document, swap them for tokens, use an AI, then restore the real names" />
+</p>
+
 ---
 
 ## The problem
