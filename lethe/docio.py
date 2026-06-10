@@ -10,6 +10,7 @@ redact_document(...) -> writes a de-identified file IN THE SAME FORMAT where
 """
 from __future__ import annotations
 
+import functools
 import io
 import os
 import xml.etree.ElementTree as ET
@@ -29,6 +30,18 @@ try:
     _HAS_PDFPLUMBER = True
 except Exception:  # pragma: no cover - optional, falls back to pypdf
     _HAS_PDFPLUMBER = False
+
+try:
+    import liteparse as _liteparse  # fully-local OCR (PDFium + bundled Tesseract)
+    _HAS_LITEPARSE = True
+except Exception:  # pragma: no cover - optional; image pages are warned instead
+    _HAS_LITEPARSE = False
+
+
+def ocr_available() -> bool:
+    """True when the local OCR engine (liteparse) is installed — scanned /
+    image-based PDF pages are then read instead of merely warned about."""
+    return _HAS_LITEPARSE
 
 # A page that carries a raster image yet yields fewer than this many words is
 # treated as image-based (a scan, or a figure/chart with baked-in text) — names
@@ -76,14 +89,60 @@ def _iter_pptx_text_frames(prs):
 
 
 # ---- PDF page model ---------------------------------------------------------
+def _merge_ocr(data: bytes, pages: list[dict]) -> None:
+    """OCR the image-based pages in place (when liteparse is installed).
+
+    Pages that carry a raster image but almost no extractable text get their
+    text recovered with the fully-local OCR engine (PDFium + bundled Tesseract,
+    selective: only the flagged pages are processed) and merged into the page
+    narrative, marked `ocr: True` so the UI can ask the user to review them.
+    Pages that still come back empty keep the hard "can't read this" warning.
+    """
+    flagged = [pg for pg in pages
+               if pg["n_images"] > 0 and pg["n_words"] < _IMAGE_PAGE_WORD_THRESHOLD]
+    if not (flagged and _HAS_LITEPARSE):
+        return
+    try:
+        targets = ",".join(str(pg["n"]) for pg in flagged)
+        res = _liteparse.LiteParse(ocr_enabled=True, target_pages=targets,
+                                   quiet=True).parse(data)
+        # get_page() is keyed by ORIGINAL page number (returns None for pages
+        # outside target_pages), so query each flagged page directly.
+        by_num = {}
+        for pg in flagged:
+            p = res.get_page(pg["n"])
+            if p is not None:
+                by_num[pg["n"]] = (p.text or "").strip()
+    except Exception:
+        return  # OCR is best-effort; the un-OCR'd warning path still applies
+    for pg in flagged:
+        text = by_num.get(pg["n"], "")
+        if text:
+            pg["narrative"] = f"{pg['narrative']}\n{text}".strip() if pg["narrative"] else text
+            pg["n_words"] = len(pg["narrative"].split()) + sum(
+                len(c.split()) for tb in pg["tables"] for row in tb for c in row)
+            pg["ocr"] = True
+
+
+@functools.lru_cache(maxsize=4)
 def _read_pdf(data: bytes) -> list[dict]:
     """Parse a PDF into per-page content, preserving page boundaries.
 
-    Each page -> {n, narrative, tables, n_words, n_images} where `narrative` is
-    the flowing text *outside* any detected table and `tables` is a list of
-    grids (list of rows of cell strings). Uses pdfplumber when available for
-    reading order + table detection; otherwise falls back to flat pypdf text.
+    Each page -> {n, narrative, tables, n_words, n_images, ocr} where
+    `narrative` is the flowing text *outside* any detected table and `tables`
+    is a list of grids (list of rows of cell strings). Uses pdfplumber when
+    available for reading order + table detection (flat pypdf text otherwise),
+    then OCRs image-based pages when liteparse is installed.
+
+    Cached per document (parsing + OCR are called from extract/warn/redact);
+    callers must treat the result as read-only.
     """
+    pages = _read_pdf_impl(data)
+    _merge_ocr(data, pages)
+    return pages
+
+
+def _read_pdf_impl(data: bytes) -> list[dict]:
     if _HAS_PDFPLUMBER:
         pages: list[dict] = []
         with pdfplumber.open(io.BytesIO(data)) as pdf:
@@ -119,7 +178,8 @@ def _read_pdf(data: bytes) -> list[dict]:
                 n_words = len(narrative.split()) + sum(
                     len(c.split()) for tb in tables for row in tb for c in row)
                 pages.append({"n": i, "narrative": narrative, "tables": tables,
-                              "n_words": n_words, "n_images": len(page.images or [])})
+                              "n_words": n_words, "n_images": len(page.images or []),
+                              "ocr": False})
         return pages
 
     # Fallback: pypdf flat text, page by page (no tables, page anchors kept).
@@ -128,17 +188,25 @@ def _read_pdf(data: bytes) -> list[dict]:
     for i, page in enumerate(reader.pages, 1):
         txt = page.extract_text() or ""
         out.append({"n": i, "narrative": txt, "tables": [],
-                    "n_words": len(txt.split()), "n_images": 0})
+                    "n_words": len(txt.split()), "n_images": 0, "ocr": False})
     return out
 
 
 def pdf_warnings(data: bytes) -> list[dict]:
-    """Pages that look image-based: they carry a raster image but almost no
-    extractable text, so names rendered in those images are NOT detected or
-    redacted — there is no OCR."""
-    return [{"page": pg["n"], "words": pg["n_words"], "images": pg["n_images"]}
-            for pg in _read_pdf(data)
-            if pg["n_images"] > 0 and pg["n_words"] < _IMAGE_PAGE_WORD_THRESHOLD]
+    """Pages needing user attention, two kinds:
+    - ocr=True  — the page was image-based and its text was recovered with the
+      local OCR engine; it IS detected/redacted, but OCR isn't perfect → review.
+    - ocr=False — the page is image-based and could NOT be read (no OCR engine
+      installed, or OCR found nothing); names there are NOT redacted."""
+    out = []
+    for pg in _read_pdf(data):
+        if pg.get("ocr"):
+            out.append({"page": pg["n"], "words": pg["n_words"],
+                        "images": pg["n_images"], "ocr": True})
+        elif pg["n_images"] > 0 and pg["n_words"] < _IMAGE_PAGE_WORD_THRESHOLD:
+            out.append({"page": pg["n"], "words": pg["n_words"],
+                        "images": pg["n_images"], "ocr": False})
+    return out
 
 
 # ---- extraction (for detection) ---------------------------------------------

@@ -81,9 +81,11 @@ each job is encrypted with a passphrase and stored only on your computer.
   tools can quote against the *original* PDF pages. The file opens with an **agent-facing
   notice header** instructing readers/AIs to cite by source page and keep the
   `[TOKEN_NNN]` placeholders verbatim.
-- **Image-page warning:** Lethe flags PDF pages that are scans/figures with no
-  extractable text — names rendered as pixels can't be detected (there's no OCR), so
-  the gap is made visible rather than silent.
+- **Local OCR for scanned pages:** PDF pages that are scans/figures with no extractable
+  text are read with a **fully-local OCR engine** (PDFium + bundled Tesseract via
+  `liteparse` — no cloud, ~16 MB) and their names detected and redacted like any other
+  text; those pages are marked for careful review since OCR isn't perfect. Without the
+  OCR extra installed, such pages are flagged instead, so the gap is never silent.
 - **Encrypted vault:** each job's token→name map is sealed with your passphrase
   (PBKDF2 → Fernet). Lose the passphrase and that job is unrecoverable *by design*.
 - **Review before anything is written:** Lethe shows every proposed redaction,
@@ -164,9 +166,10 @@ portable bundle sets it to keep data in-folder). It never goes inside the packag
 - **The review step is the safety net, not the AI.** The NLP *suggestions* are a
   convenience to help you spot gaps — treat the dictionary as the source of truth and
   always eyeball the review list.
-- **No OCR.** Names rendered as pixels — in a scan, a chart, a logo, a signature image —
-  can't be read or redacted. Lethe **flags** image-based PDF pages so you know to check
-  them, but it cannot redact text inside an image.
+- **OCR covers PDF pages only, and isn't perfect.** Scanned/image-based *PDF pages* are
+  read with local OCR (when installed) and marked for review — but poor scans can defeat
+  it, and images *inside Word / Excel / PowerPoint files* (logos, signature images,
+  pasted screenshots) are never read. Always review flagged pages.
 - **PDF page numbers:** the output's `Page N` headings refer to the *original* PDF pages
   (for citation); the Word file's own rendered pagination won't match the source.
 - **Text in shapes, text boxes, embedded objects, metadata, comments and tracked

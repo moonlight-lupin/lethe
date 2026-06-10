@@ -4,4 +4,7 @@ python-pptx
 openpyxl
 pypdf
 pdfplumber
+# Fully-local OCR for scanned/image PDF pages (PDFium + bundled Tesseract).
+# Optional at runtime — Lethe warns instead of reading those pages without it.
+liteparse
 cryptography

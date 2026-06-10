@@ -12,19 +12,15 @@ cross-platform pipx install + Windows installer.
   redacted and a working `.pptx` comes back. Text inside charts/SmartArt is out
   of scope (documented), as is text in images, like everywhere else.
 
-## Next (v1.1 candidates)
-
-- **OCR for scanned / image-based PDF pages** — today Lethe *flags* image pages
-  ("names here can't be detected — no OCR"); with a local OCR engine those pages
-  could be detected and redacted instead. Candidate:
-  [run-llama/liteparse](https://github.com/run-llama/liteparse) — fully local
-  (PDFium + bundled Tesseract, Apache-2.0), selective OCR merged with native
-  text. **Spike first**: keep pdfplumber for native text + table grids (LiteParse
-  doesn't obviously emit structured tables); use LiteParse/Tesseract only for the
-  pages we currently warn about. Verify per-page fidelity, OCR quality on real
-  scans, Windows wheel availability + bundle size, and fully-offline behaviour.
-  OCR output goes through the normal detection + review flow — the review step
-  remains the safety net.
+- **Local OCR for scanned / image-based PDF pages** — via
+  [run-llama/liteparse](https://github.com/run-llama/liteparse) (PDFium +
+  bundled Tesseract, Apache-2.0, ~16 MB, fully offline). Hybrid as planned:
+  pdfplumber keeps native text + table grids; liteparse selectively OCRs only
+  the image-based pages (`target_pages`), whose recovered text then flows
+  through normal detection/redaction and is marked "review carefully" in the
+  UI. Optional `lethe[ocr]` extra; included in requirements.txt so the portable
+  bundle and dev installs get it. Spike findings: all test names recovered
+  verbatim from pixel-only pages, ~0.26 s/page selective, Windows wheel on 3.13.
 
 ## Later / undecided
 

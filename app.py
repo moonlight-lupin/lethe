@@ -236,6 +236,10 @@ body.body--dark .meander{opacity:.45;background-image:url("__MEANDER_DARK__");}
   border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn);
   border-radius:var(--r-sm);padding:9px 13px;margin-bottom:10px;font-size:12.5px;line-height:1.5;}
 .pdf-warn b{color:var(--warn);}
+.pdf-ocr{background:color-mix(in srgb,var(--accent) 10%,var(--panel));
+  border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);color:var(--accent2);
+  border-radius:var(--r-sm);padding:9px 13px;margin-bottom:10px;font-size:12.5px;line-height:1.5;}
+.pdf-ocr b{color:var(--accent2);}
 /* spreadsheet preview — real tables per sheet */
 .xlsx-preview{max-height:62vh;overflow:auto;background:var(--panel);border:1px solid var(--border);
   border-radius:var(--r);padding:14px 16px;color:var(--text);}
@@ -357,10 +361,12 @@ Everything stays in the app's own folder — nothing is uploaded:
 
 ### What it can't remove
 The tool reads the **text** of your files. It does **not** touch:
-- **Images & logos** — a counterparty logo, a signature image, a scanned stamp, or any
-  name *inside a picture* is not detected (there is no image reading / OCR).
-- **Scanned / image-only PDFs** — no selectable text, so nothing is found. Lethe
-  **flags** image-based pages so you know to check them, but it can't read them (no OCR).
+- **Images & logos inside Word / Excel / PowerPoint** — a counterparty logo, a signature
+  image, or any name *inside a picture in an Office file* is not detected (OCR applies
+  to PDF pages only).
+- **Scanned / image-only PDF pages** are read with **local OCR** (when the OCR engine is
+  installed — it is in the standard bundle) and marked for review; OCR isn't perfect, so
+  always check those pages. Without the engine they're flagged as unread instead.
 - Text in **shapes, text boxes, charts or embedded objects**, and document
   **metadata, comments or tracked changes** — these may still carry names.
 - In **Excel**, a name buried inside a **formula** (e.g. `="Acme "&A1`) — names are
@@ -800,12 +806,19 @@ def build_deidentify_panel():
                 file_select.value = names[idx]
             f = files[idx]
             banner = ""
-            warns = f.get("warnings")
-            if warns:
-                pages = ", ".join(str(w["page"]) for w in warns)
-                banner = (f'<div class="pdf-warn">⚠ Page(s) {_html.escape(pages)} look image-based — '
-                          "their text isn't extracted (no OCR), so any names on them are "
-                          "<b>not redacted</b>. Check those pages in the original PDF.</div>")
+            warns = f.get("warnings") or []
+            hard = [w for w in warns if not w.get("ocr")]
+            soft = [w for w in warns if w.get("ocr")]
+            if hard:
+                pages = ", ".join(str(w["page"]) for w in hard)
+                banner += (f'<div class="pdf-warn">⚠ Page(s) {_html.escape(pages)} look image-based — '
+                           "their text isn't extracted (no OCR engine available), so any names on "
+                           "them are <b>not redacted</b>. Check those pages in the original PDF.</div>")
+            if soft:
+                pages = ", ".join(str(w["page"]) for w in soft)
+                banner += (f'<div class="pdf-ocr">🔍 Page(s) {_html.escape(pages)} were image-based — '
+                           "their text was recovered with <b>local OCR</b> and is detected below. "
+                           "OCR isn't perfect: review these pages carefully.</div>")
             if f["kind"] == "xlsx":
                 preview_html.content = banner + _xlsx_preview_html(f["data"], state["items"])
             else:
@@ -859,12 +872,19 @@ def build_deidentify_panel():
                 return
             note.dismiss()
             await run_detection()
-            warns = entry.get("warnings")
-            if warns:
-                pages = ", ".join(str(w["page"]) for w in warns)
+            warns = entry.get("warnings") or []
+            hard = [w for w in warns if not w.get("ocr")]
+            soft = [w for w in warns if w.get("ocr")]
+            if hard:
+                pages = ", ".join(str(w["page"]) for w in hard)
                 ui.notify(f"⚠ {f.name}: page(s) {pages} look image-based — text/names there "
-                          "can't be detected (no OCR). Review them in the original PDF.",
+                          "can't be detected (no OCR engine). Review them in the original PDF.",
                           type="warning", multi_line=True, timeout=10000)
+            elif soft:
+                pages = ", ".join(str(w["page"]) for w in soft)
+                ui.notify(f"🔍 {f.name}: page(s) {pages} were image-based — text recovered with "
+                          "local OCR. Review those pages carefully.",
+                          color="primary", multi_line=True, timeout=8000)
             else:
                 ui.notify(f"Added {f.name}", color="primary")
 
