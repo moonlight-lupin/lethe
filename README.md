@@ -102,8 +102,8 @@ each job is encrypted with a passphrase and stored only on your computer.
 | You are… | Install | Run |
 |---|---|---|
 | **on Windows, non-technical** | download the installer from [Releases](https://github.com/moonlight-lupin/lethe/releases) and run it (per-user, no admin rights) | Start-menu / Desktop shortcut |
-| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp] @ git+https://github.com/moonlight-lupin/lethe@v1.0.0"` | `lethe` |
-| **lean (no NLP engine, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.0.0"` | `lethe` |
+| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp] @ git+https://github.com/moonlight-lupin/lethe@v1.1.0"` | `lethe` |
+| **lean (no NLP engine, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.1.0"` | `lethe` |
 
 [pipx](https://pipx.pypa.io) installs Lethe into its own isolated environment and puts a
 `lethe` command on your PATH — the cross-platform way to run it on macOS and Linux. The

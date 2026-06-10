@@ -28,3 +28,8 @@ boot.*
 
 # Python build artifacts
 /build/
+
+# scratch test venvs
+/_itest/
+/_spike/
+/_wheeltest/

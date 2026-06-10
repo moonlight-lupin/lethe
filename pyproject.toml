@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lethe"
-version = "1.0.0"
+version = "1.1.0"
 description = "Lethe — a local, reversible document de-identifier"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
