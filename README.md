@@ -105,14 +105,15 @@ each job is encrypted with a passphrase and stored only on your computer.
 | You are… | Install | Run |
 |---|---|---|
 | **on Windows, non-technical** | download the installer from [Releases](https://github.com/moonlight-lupin/lethe/releases) and run it (per-user, no admin rights) | Start-menu / Desktop shortcut |
-| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp] @ git+https://github.com/moonlight-lupin/lethe@v1.1.0"` | `lethe` |
-| **lean (no NLP engine, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.1.0"` | `lethe` |
+| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp,ocr] @ git+https://github.com/moonlight-lupin/lethe@v1.1.0"` | `lethe` |
+| **lean (no extras, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.1.0"` | `lethe` |
 
 [pipx](https://pipx.pypa.io) installs Lethe into its own isolated environment and puts a
-`lethe` command on your PATH — the cross-platform way to run it on macOS and Linux. The
-`[nlp]` extra adds the Presidio + spaCy suggestion engine and the small English model;
-without it Lethe falls back to a built-in regex name-guesser. Either way, running `lethe`
-opens the app in your browser at `http://localhost:8731`.
+`lethe` command on your PATH — the cross-platform way to run it on macOS and Linux. Two
+optional extras: `[nlp]` adds the Presidio + spaCy suggestion engine and the small English
+model (otherwise Lethe falls back to a built-in regex name-guesser), and `[ocr]` adds
+fully-local OCR so scanned/image PDF pages are read (otherwise they're flagged, not read).
+Either way, running `lethe` opens the app in your browser at `http://localhost:8731`.
 
 > spaCy/Presidio have no Python 3.14 wheels yet, so the `[nlp]` extra requires Python ≤ 3.13.
 
