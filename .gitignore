@@ -39,3 +39,7 @@ boot.*
 /_spike/
 /_wheeltest/
 /_gifframes/
+
+# Claude Code local (machine-specific) settings — keep memory + project CLAUDE.md,
+# but not per-user permission grants.
+.claude/settings.local.json

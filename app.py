@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from nicegui import app, run, ui
 
 from lethe import (
+    DATA_DIR,
     WEB_STATIC,
     Entity,
     _whole_word_regex,
@@ -345,7 +346,26 @@ Restoration matches tokens **exactly** (`[PERSON_001]`). If the AI changed a tok
 dropped the brackets, changed its case, or split it across a line — that one name
 won't be restored, so glance over the result and check the count looks right.
 
-### 3 · Entity dictionary
+### 3 · Restore — when the tokens didn't come from Lethe
+Use this when you already have a document full of `[BRACKETED]` placeholders that
+**Lethe didn't create** — made by another tool, a colleague, or by hand — so there's
+no Job ID to reverse. Lethe scans for the tokens and lets you fill in the real names.
+
+1. **Upload** the tokenised file (Word / PowerPoint / PDF / Excel) *or* paste the text,
+   then **Scan for tokens**.
+2. Each distinct `[token]` appears with its occurrence count and a blank field. Type the
+   real name behind each. **Untick** anything that isn't a placeholder (footnote markers
+   like `[1]` are unticked for you); leave a field **blank** to keep that token as-is.
+3. Optionally tick **Add the names I fill in to my dictionary** — recognised people,
+   counterparties and your custom types are saved for future detection; pattern tokens
+   (emails/phones) and unrecognised placeholders are skipped.
+4. **Restore document** — you get the file back in the same format (a PDF comes back as
+   Word). The count shows how many token occurrences were swapped.
+
+This is also a quick **template filler**: hand it a form with `[CLIENT]`, `[DATE]`,
+`[AMOUNT]` placeholders and it fills them in.
+
+### 4 · Entity dictionary
 Your curated list of people & counterparties — this is what makes detection
 reliable. Add **aliases** (short / legal / trading names) so every variant maps
 to the same token. Newly-found names you redact are added here automatically.
@@ -359,6 +379,9 @@ Everything stays in the app's own folder — nothing is uploaded:
   that job can no longer be reversed.
 - **History index** (`vault\\index.json`) — the *Past conversions* list (date, file
   name, redaction count) in plain text. It does **not** contain the real names.
+
+**Settings → Files & folders** shows exactly where this folder is (and where Lethe runs
+from), each with an **Open** button — handy for backing up your dictionary and vault.
 
 ### What it can't remove
 The tool reads the **text** of your files. It does **not** touch:
@@ -613,6 +636,7 @@ def _build_index() -> None:
             "align=left active-color=primary indicator-color=primary no-caps") as tabs:
         t_deid = ui.tab("De-identify", icon="lock")
         t_reid = ui.tab("Re-identify", icon="lock_open")
+        t_restore = ui.tab("Restore", icon="auto_fix_high")
         t_dict = ui.tab("Entity dictionary", icon="menu_book")
         t_set = ui.tab("Settings", icon="settings")
 
@@ -621,6 +645,8 @@ def _build_index() -> None:
             build_deidentify_panel()
         with ui.tab_panel(t_reid).classes("p-0"):
             build_reidentify_panel()
+        with ui.tab_panel(t_restore).classes("p-0"):
+            build_restore_panel()
         with ui.tab_panel(t_dict).classes("p-0"):
             build_dictionary_panel()
         with ui.tab_panel(t_set).classes("p-0"):
@@ -1167,6 +1193,213 @@ def build_reidentify_panel():
 
 
 # ============================================================================
+# 2½ · RESTORE (manual) — re-identify a tokenised document with no Job ID
+# ============================================================================
+# When the de-identification happened OUTSIDE Lethe (another tool, a colleague,
+# or a hand-made template), there is no vault job to reverse. This tab scans a
+# document for [bracketed] tokens, lets the user supply the real value for each,
+# and rebuilds the file using the very same restore engine the Re-identify tab
+# uses — only the token→value map comes from the user instead of the vault.
+_PATTERN_PREFIXES = {"EMAIL", "PHONE", "ACCOUNT"}
+# A token to offer for restoring: anything in [ ... ] on one line, length-capped
+# so a stray "[" in prose can't swallow a paragraph.
+_RESTORE_TOKEN_RE = re.compile(r"\[[^\[\]\r\n]{1,80}\]")
+# Lethe-style typed token, e.g. [PERSON_001] / [COUNTERPARTY_012] / [PROJECT_003].
+_TYPED_TOKEN_RE = re.compile(r"^\[([A-Za-z][A-Za-z0-9]*)_\d+\]$")
+
+
+def _restore_defaults(token: str, custom_types: list[str]) -> tuple[str, bool]:
+    """Starting points for a scanned token's per-row controls: (dictionary Type
+    to pre-select, whether to pre-tick 'Save'). The user can override both — we
+    only seed sensible defaults and never silently refuse to offer a token.
+
+    Pattern tokens (emails/phones) and bare footnote markers like [1] start with
+    Save un-ticked; anything name-like starts ticked under its best-guess type."""
+    inside = token[1:-1].strip()
+    if inside.isdigit():                       # [1], [12] — footnote/citation markers
+        return "OTHER", False
+    m = _TYPED_TOKEN_RE.match(token)
+    if m:
+        prefix = m.group(1).upper()
+        if prefix in _PATTERN_PREFIXES:        # emails/phones aren't dictionary entities
+            return "OTHER", False
+        if prefix == "PERSON":
+            return "PERSON", True
+        if prefix in ("COUNTERPARTY", "ORG"):
+            return "COUNTERPARTY", True
+        if prefix == "OTHER":
+            return "OTHER", True
+        for t in custom_types:                 # a user-defined type, e.g. [PROJECT_001]
+            if t.upper() == prefix:
+                return t, True
+    # free-form placeholder like [CLIENT A] — almost certainly an entity; default to
+    # COUNTERPARTY (the user picks the real type from the dropdown).
+    return "COUNTERPARTY", True
+
+
+def build_restore_panel():
+    state: dict = {"data": None, "kind": None, "name": None}
+    rows: list[dict] = []   # [{token, count, cb, inp, tsel, save}]
+    custom_types = load_token_types()
+
+    with ui.column().classes("w-full gap-5 pt-5"):
+        # ---- input: a tokenised document or pasted text ----
+        with ui.card().classes("w-full rounded-xl shadow-sm"):
+            ui.label("Restore tokens — when the de-identification happened outside Lethe").classes(
+                "text-base font-medium")
+            ui.label(
+                "Already holding a document full of placeholder tokens in [SQUARE_BRACKETS] — made by "
+                "another tool, a colleague, or by hand — but with no Lethe Job ID to reverse? Drop it "
+                "in. Lethe finds the tokens and lets you type the real name behind each, then rebuilds "
+                "the document in the same format.").classes("text-sm text-slate-500")
+            ui.label("Everything stays on your machine; nothing is uploaded.").classes(
+                "text-xs").style(f"color:{PRIMARY}")
+            with ui.row().classes("items-center gap-2 mt-1"):
+                ui.upload(label="Upload a tokenised .docx / .pptx / .pdf / .xlsx / .txt",
+                          auto_upload=True, on_upload=lambda e: on_upload(e)).props(
+                    'accept=".docx,.pptx,.pdf,.xlsx,.txt" flat bordered')
+                up_note = ui.label("").classes("text-xs text-teal-700")
+                clear_btn = ui.button(icon="close", on_click=lambda: clear_upload()).props(
+                    "flat round dense color=grey-7").tooltip("Clear uploaded file")
+                clear_btn.visible = False
+            paste = ui.textarea("…or paste tokenised text here").props("outlined").classes(
+                "w-full").style("min-height:120px")
+            ui.button("Scan for tokens", icon="search", on_click=lambda: on_scan()).props(
+                "unelevated no-caps")
+
+        # ---- review: fill in the real value behind each token ----
+        token_card = ui.card().classes("w-full rounded-xl shadow-sm")
+        token_card.visible = False
+        with token_card:
+            ui.label("Tokens found — fill in the real names").classes("text-base font-medium")
+            ui.label("Untick the left box for anything that isn't a placeholder (footnote markers, "
+                     "citations…); a token left blank or unticked keeps its bracketed form. Tick "
+                     "Save to also add that name to your dictionary under the Type you choose.").classes(
+                "text-sm text-slate-500")
+            tokens_box = ui.column().classes("w-full gap-2 mt-2")
+            ui.button("Restore document", icon="lock_open", on_click=lambda: on_restore()).props(
+                "unelevated no-caps mt-1")
+            result = ui.column().classes("w-full")
+
+        def _read_text() -> str | None:
+            if state["data"] is not None:
+                try:
+                    return extract_text(state["data"], state["kind"])
+                except Exception as exc:  # noqa: BLE001 — surface any read failure to the user
+                    ui.notify(f"Couldn't read that file: {exc}", color="negative")
+                    return None
+            return (paste.value or "").strip() or None
+
+        async def on_upload(e):
+            f = e.file
+            state.update(data=await f.read(), kind=file_kind(f.name) or "txt", name=f.name)
+            up_note.text = f"Loaded: {f.name}"
+            clear_btn.visible = True
+
+        def clear_upload():
+            state.update(data=None, kind=None, name=None)
+            up_note.text = ""
+            clear_btn.visible = False
+
+        def on_scan():
+            text = _read_text()
+            if not text:
+                ui.notify("Upload a tokenised file or paste some text first", color="warning")
+                return
+            counts: dict[str, int] = {}
+            for m in _RESTORE_TOKEN_RE.finditer(text):
+                counts[m.group(0)] = counts.get(m.group(0), 0) + 1
+            if not counts:
+                ui.notify("No [bracketed] tokens found in that document", color="warning")
+                token_card.visible = False
+                return
+            rows.clear()
+            tokens_box.clear()
+            type_options = ["PERSON", "COUNTERPARTY", "OTHER"] + custom_types
+            # most-frequent first; typed Lethe-style tokens ahead of free-form ones
+            ordered = sorted(counts.items(),
+                             key=lambda kv: (_TYPED_TOKEN_RE.match(kv[0]) is None, -kv[1], kv[0]))
+            with tokens_box:
+                with ui.row().classes("w-full items-center text-xs text-slate-400 px-1"):
+                    ui.label("").style("width:34px")
+                    ui.label("Token").style("width:190px")
+                    ui.label("count").style("width:44px")
+                    ui.label("Real name / value").classes("flex-1")
+                    ui.label("Type").style("width:150px")
+                    ui.label("Save").style("width:50px")
+                for tok, n in ordered:
+                    default_type, default_save = _restore_defaults(tok, custom_types)
+                    # the left "include" box defaults off only for footnote-like [1]
+                    include_on = not tok[1:-1].strip().isdigit()
+                    with ui.row().classes("w-full items-center gap-2"):
+                        cb = ui.checkbox(value=include_on).props("dense").tooltip(
+                            "Restore this token in the document")
+                        ui.label(tok).classes("font-mono text-sm").style("width:190px")
+                        ui.label(f"×{n}").classes("text-xs text-slate-400").style("width:44px")
+                        inp = ui.input(placeholder="leave blank to keep the token").props(
+                            "outlined dense").classes("flex-1")
+                        tsel = ui.select(options=type_options, value=default_type).props(
+                            "outlined dense options-dense").style("width:150px")
+                        save_cb = ui.checkbox(value=default_save).props("dense").style(
+                            "width:50px").tooltip("Add this name to your dictionary")
+                    rows.append({"token": tok, "count": n, "cb": cb, "inp": inp,
+                                 "tsel": tsel, "save": save_cb})
+            result.clear()
+            token_card.visible = True
+            ui.notify(f"Found {len(ordered)} distinct token(s)", color="primary")
+
+        def on_restore():
+            mapping = {r["token"]: (r["inp"].value or "").strip()
+                       for r in rows if r["cb"].value and (r["inp"].value or "").strip()}
+            if not mapping:
+                ui.notify("Fill in at least one token's real name (and keep it ticked)",
+                          color="warning")
+                return
+            restore = build_restorer(mapping)
+            result.clear()
+            if state["data"] is not None:
+                out_bytes, ext, hits = redact_document(state["data"], state["kind"], restore)
+                base = state["name"].rsplit(".", 1)[0]
+                fname = f"{base}__restored{ext}"
+                with result:
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("check_circle", color="positive")
+                        ui.label(f"Restored {hits} token occurrence(s) — file rebuilt.").classes(
+                            "text-sm")
+                    if state["kind"] == "pdf":
+                        ui.label("A PDF is rebuilt as a Word (.docx) file.").classes(
+                            "text-xs text-slate-400")
+                    ui.button(f"Download {fname}", icon="download",
+                              on_click=lambda b=out_bytes, n=fname: ui.download(b, n)).props(
+                        "unelevated no-caps")
+            else:
+                restored, hits = restore(paste.value or "")
+                with result:
+                    with ui.row().classes("items-center gap-2"):
+                        ui.icon("check_circle", color="positive")
+                        ui.label(f"Restored {hits} token occurrence(s).").classes("text-sm")
+                    ui.textarea("Restored output", value=restored).props("outlined readonly").classes(
+                        "w-full").style("min-height:140px")
+                    ui.button("Download as .txt", icon="download",
+                              on_click=lambda r=restored: ui.download(r.encode("utf-8"),
+                                                                      "restored.txt")).props(
+                        "unelevated no-caps")
+            # bootstrap the dictionary from the rows the user ticked "Save" on
+            new_ents = [Entity(canonical=(r["inp"].value or "").strip(),
+                               type=r["tsel"].value or "OTHER", aliases=[])
+                        for r in rows
+                        if r["save"].value and (r["inp"].value or "").strip()]
+            if new_ents:
+                added = merge_entities(new_ents)
+                dup = len(new_ents) - added
+                msg = f"Saved {added} name(s) to your dictionary"
+                if dup:
+                    msg += f" · {dup} already there"
+                ui.notify(msg, color="primary")
+            ui.notify("Restored", color="positive")
+
+
+# ============================================================================
 # 3 · ENTITY DICTIONARY
 # ============================================================================
 def build_dictionary_panel():
@@ -1269,6 +1502,24 @@ def build_dictionary_panel():
 # ============================================================================
 # 4 · SETTINGS  (download detection-language models on demand)
 # ============================================================================
+def _open_folder(path: str) -> bool:
+    """Reveal a folder in the OS file manager. Lethe is a local desktop app, so
+    'the server' is the user's own machine. Returns False if it couldn't open."""
+    try:
+        os.makedirs(path, exist_ok=True)
+        if sys.platform == "win32":
+            os.startfile(path)  # type: ignore[attr-defined]  # noqa: SLF001
+        elif sys.platform == "darwin":
+            import subprocess
+            subprocess.Popen(["open", path])
+        else:
+            import subprocess
+            subprocess.Popen(["xdg-open", path])
+        return True
+    except Exception:  # noqa: BLE001 — best-effort; the path is always shown as a fallback
+        return False
+
+
 def build_settings_panel():
     with ui.column().classes("w-full gap-5 pt-5"):
         with ui.card().classes("w-full rounded-xl shadow-sm"):
@@ -1408,6 +1659,37 @@ def build_settings_panel():
                 new_type = ui.input(placeholder="New type, e.g. PROJECT").props(
                     "outlined dense").on("keydown.enter", lambda: add_type())
                 ui.button("Add type", icon="add", on_click=add_type).props("outline no-caps")
+
+        with ui.card().classes("w-full rounded-xl shadow-sm"):
+            ui.label("Files & folders").classes("text-base font-medium")
+            ui.label("Everything Lethe stores stays on this computer. The data folder holds your "
+                     "entity dictionary, your custom token types and the encrypted vault — back it "
+                     "up to keep your re-identification keys safe.").classes("text-sm text-slate-500")
+
+            def reveal(p: str):
+                if _open_folder(p):
+                    ui.notify("Opened in your file manager", color="primary")
+                else:
+                    ui.notify("Couldn't open it automatically — copy the path shown above",
+                              color="warning")
+
+            def folder_row(title: str, desc: str, path: str):
+                with ui.column().classes("w-full gap-1 mt-2"):
+                    ui.label(title).classes("text-sm font-medium")
+                    if desc:
+                        ui.label(desc).classes("text-xs text-slate-400")
+                    with ui.row().classes("items-center gap-2 w-full no-wrap"):
+                        ui.input(value=path).props("outlined dense readonly").classes(
+                            "flex-1").style("font-family:monospace;font-size:12px")
+                        ui.button("Open", icon="folder_open",
+                                  on_click=lambda p=path: reveal(p)).props(
+                            "outline no-caps").tooltip("Open this folder")
+
+            folder_row("Your data (dictionary, custom types, encrypted vault)",
+                       "entities.json, token_types.json and the vault/ folder live here — back this up.",
+                       DATA_DIR)
+            folder_row("Program files (where Lethe runs from)", "",
+                       os.path.dirname(os.path.abspath(__file__)))
 
         with ui.card().classes("w-full rounded-xl shadow-sm"):
             ui.label("About Lethe").classes("text-base font-medium")

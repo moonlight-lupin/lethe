@@ -66,6 +66,10 @@ each job is encrypted with a passphrase and stored only on your computer.
 
 - **Fully local & reversible** — de-identify before the AI sees a document,
   re-identify the AI's reply afterwards. No internet, no telemetry.
+- **Restore tokens from anywhere:** a **Restore** tab re-identifies documents that were
+  tokenised *outside* Lethe — no Job ID needed. Scan for `[bracketed]` placeholders, fill
+  in the real names, and rebuild the file in the same format (also handy as a plain
+  template filler).
 - **Entity dictionary (the reliable core):** a curated list of your real people and
   counterparties with their aliases (*Acme Capital Partners* / *Acme* / *ACP*) gives
   near-100% reliability on the names that actually matter. Bulk-paste a master list.
@@ -141,11 +145,19 @@ translation — because re-identify just maps tokens back to names; it never nee
 original file. Matching is **exact** (`[PERSON_001]`), so any token the AI altered or
 dropped simply won't be restored — glance over the result and check the restored count.
 
-**3 · Entity dictionary** — Your curated people & counterparties. This is what makes
+**3 · Restore** — For documents that were tokenised **outside Lethe** (another tool, a
+colleague, or by hand), so there's no Job ID. Lethe scans the file for `[bracketed]`
+tokens, lets you type the real name behind each (ticking which brackets are really
+placeholders), and rebuilds the document in the same format. You can optionally fold the
+names you enter into your dictionary. It doubles as a quick **template filler** for
+forms with `[CLIENT]` / `[DATE]` / `[AMOUNT]` placeholders.
+
+**4 · Entity dictionary** — Your curated people & counterparties. This is what makes
 detection dependable; generic "AI name detection" can miss names, a known list does
 not. Add aliases so every variant maps to one token; bulk-import a master list.
 
-**4 · Settings** — Download extra detection-language models on demand; define your own
+**5 · Settings** — See where your data and program files live (each with an **Open**
+button, for backups); download extra detection-language models on demand; define your own
 **token types** (e.g. PROJECT, FUND) that appear in the Type dropdowns; toggle the
 light/dark theme.
 
