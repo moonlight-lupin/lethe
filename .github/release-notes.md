@@ -2,14 +2,18 @@
 counterparty names with stable tokens *before* you send a document to an AI, then
 restores the real names in the AI's reply. Nothing ever leaves your machine.
 
-## What's new in 1.1.0
+## What's new in 1.2.0
 
-- **PowerPoint (`.pptx`) support** — decks in, de-identified decks out, format-preserving
-  like Word and Excel. Slide text, tables, speaker notes and master/layout text are all
-  redacted.
-- **Local OCR for scanned PDF pages** — image-based pages that previously could only be
-  *flagged* are now read with a fully-local OCR engine (PDFium + bundled Tesseract, no
-  cloud) and their names detected and redacted. OCR'd pages are marked for review.
+- **New "Restore" tab — re-identify documents tokenised *outside* Lethe.** When the
+  de-identification was done by another tool, a colleague, or by hand (so there's no Job
+  ID to reverse), drop the file in: Lethe scans it for `[bracketed]` tokens, lets you type
+  the real name behind each, and rebuilds the document in the same format. Each token gets
+  an explicit **Type** dropdown and a **Save** checkbox, so *you* decide what's an entity
+  and how it's filed in your dictionary — no guessing. It also doubles as a quick template
+  filler for forms with `[CLIENT]` / `[DATE]` / `[AMOUNT]` placeholders.
+- **Settings → Files & folders.** See exactly where Lethe keeps your data (the entity
+  dictionary, custom token types and the encrypted vault) and where it runs from — each
+  with an **Open** button that reveals the folder in your file manager. Handy for backups.
 
 ## Install
 
@@ -17,8 +21,8 @@ restores the real names in the AI's reply. Nothing ever leaves your machine.
 |---|---|---|
 | **Windows, non-technical** | download the **`…-Setup.exe`** below and run it (per-user, no admin rights) | Start-menu / Desktop shortcut |
 | **Windows, portable** | download the **`…-Portable.zip`** below, unzip, run the launcher | data stays inside the folder |
-| **Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp,ocr] @ git+https://github.com/moonlight-lupin/lethe@v1.1.0"` | `lethe` |
-| **lean (no NLP, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.1.0"` | `lethe` |
+| **Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp,ocr] @ git+https://github.com/moonlight-lupin/lethe@v1.2.0"` | `lethe` |
+| **lean (no NLP, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.2.0"` | `lethe` |
 
 The Windows installer and portable bundle embed their own Python — **no Python needed**
 on the target PC. The `pipx` route is the cross-platform way for macOS and Linux; the

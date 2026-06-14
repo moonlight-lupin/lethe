@@ -63,7 +63,7 @@ from lethe import (
 # invert under dark mode (`body.body--dark`, toggled from the header) with no
 # markup changes — exactly the token architecture the two sibling apps use.
 PRIMARY = "#6a4690"  # dusk amethyst — Lethe's accent within the family
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 REPO_URL = "https://github.com/moonlight-lupin/lethe"
 
 # Quasar brand palette — applied per page inside _build_index() (NiceGUI forbids
