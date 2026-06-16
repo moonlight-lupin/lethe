@@ -43,6 +43,11 @@ New-Item -ItemType Directory -Force -Path (Join-Path $runtime "Lib\site-packages
 $py = Join-Path $runtime "python.exe"
 Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile (Join-Path $runtime "get-pip.py") -UseBasicParsing
 & $py (Join-Path $runtime "get-pip.py") --no-warn-script-location | Out-Null
+# The embeddable Python ships pip only — no setuptools/wheel. Some pure-Python
+# deps (e.g. extract-msg's tree) are published as sdists and need a PEP 517 build
+# backend, so seed setuptools + wheel before installing requirements.
+& $py -m pip install --no-warn-script-location --upgrade setuptools wheel | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "pip bootstrap (setuptools/wheel) failed" }
 
 Write-Host "4/6  Installing dependencies into the bundle (this is the slow part)..."
 & $py -m pip install --no-warn-script-location -r (Join-Path $proj "requirements.txt")
