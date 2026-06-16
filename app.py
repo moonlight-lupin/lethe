@@ -63,7 +63,7 @@ from lethe import (
 # invert under dark mode (`body.body--dark`, toggled from the header) with no
 # markup changes — exactly the token architecture the two sibling apps use.
 PRIMARY = "#6a4690"  # dusk amethyst — Lethe's accent within the family
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 REPO_URL = "https://github.com/moonlight-lupin/lethe"
 
 # Quasar brand palette — applied per page inside _build_index() (NiceGUI forbids
@@ -313,7 +313,8 @@ then puts the real names back into the AI's reply. Everything runs on this
 computer; nothing is ever sent anywhere.
 
 ### 1 · De-identify
-1. Drag in one or more **Word / PowerPoint / PDF / Excel** files (or click *Try a sample memo*).
+1. Drag in one or more **Word / PowerPoint / PDF / Excel / email** files (`.eml`,
+   Outlook `.msg`, or `.html`) — or click *Try a sample memo*.
 2. The right pane shows the document with detected names **highlighted**
    (amethyst = person, gold = counterparty, grey = email/phone/account).
 3. In the **Review** list:
@@ -351,8 +352,8 @@ Use this when you already have a document full of `[BRACKETED]` placeholders tha
 **Lethe didn't create** — made by another tool, a colleague, or by hand — so there's
 no Job ID to reverse. Lethe scans for the tokens and lets you fill in the real names.
 
-1. **Upload** the tokenised file (Word / PowerPoint / PDF / Excel) *or* paste the text,
-   then **Scan for tokens**.
+1. **Upload** the tokenised file (Word / PowerPoint / PDF / Excel / email) *or* paste the
+   text, then **Scan for tokens**.
 2. Each distinct `[token]` appears with its occurrence count and a blank field. Type the
    real name behind each. **Untick** anything that isn't a placeholder (footnote markers
    like `[1]` are unticked for you); leave a field **blank** to keep that token as-is.
@@ -410,6 +411,11 @@ review are the real safeguard.
   heading (matching the original PDF) so you can cite pages. The file opens with a short
   notice telling an AI to cite by source page and keep the tokens intact. Image/scan
   pages are flagged.
+- **Emails** (`.eml`, Outlook `.msg`, `.html`) also come back as Word — the **From / To /
+  Cc / Subject** block is de-identified along with the body. Attachments and inline images
+  are *not* included or redacted (only the message text is). (`.eml` and `.html` always
+  work; `.msg` support is built into the Windows app, and a pip install adds it with the
+  optional `email` extra.)
 - **Excel** keeps its charts, formatting and formulas — only cell text is changed. A
   cell that mixes formatting *and* contains a redacted name may lose that cell's fine
   in-line formatting (the redaction is still correct).
@@ -673,12 +679,13 @@ def build_deidentify_panel():
                 ui.button("Start over", icon="restart_alt", on_click=lambda: reset_all()).props(
                     "flat no-caps dense").tooltip(
                     "Clear all files, redactions, passphrase and results")
-            ui.label("Word, PowerPoint, PDF or Excel — one or many. Same name → same token across all of them.").classes(
+            ui.label("Word, PowerPoint, PDF, Excel or email (.eml / .msg / .html) — one or many. "
+                     "Same name → same token across all of them.").classes(
                 "text-sm text-slate-500")
             with ui.row().classes("items-center gap-4 mt-2 w-full"):
                 uploader = ui.upload(label="Drop / browse files", multiple=True, auto_upload=True,
                                      on_upload=lambda e: on_file(e)).props(
-                    'accept=".docx,.pptx,.pdf,.xlsx,.txt" flat bordered').classes("flex-1")
+                    'accept=".docx,.pptx,.pdf,.xlsx,.txt,.eml,.msg,.html,.htm" flat bordered').classes("flex-1")
                 ui.button("Try a sample memo", icon="description",
                           on_click=lambda: on_sample()).props("outline no-caps")
             files_row = ui.row().classes("gap-2 flex-wrap mt-1")
@@ -1255,9 +1262,9 @@ def build_restore_panel():
             ui.label("Everything stays on your machine; nothing is uploaded.").classes(
                 "text-xs").style(f"color:{PRIMARY}")
             with ui.row().classes("items-center gap-2 mt-1"):
-                ui.upload(label="Upload a tokenised .docx / .pptx / .pdf / .xlsx / .txt",
+                ui.upload(label="Upload a tokenised .docx / .pptx / .pdf / .xlsx / .txt / email",
                           auto_upload=True, on_upload=lambda e: on_upload(e)).props(
-                    'accept=".docx,.pptx,.pdf,.xlsx,.txt" flat bordered')
+                    'accept=".docx,.pptx,.pdf,.xlsx,.txt,.eml,.msg,.html,.htm" flat bordered')
                 up_note = ui.label("").classes("text-xs text-teal-700")
                 clear_btn = ui.button(icon="close", on_click=lambda: clear_upload()).props(
                     "flat round dense color=grey-7").tooltip("Clear uploaded file")

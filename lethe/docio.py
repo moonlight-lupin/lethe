@@ -3,14 +3,15 @@ Document read / write.
 
 extract_text(...)  -> plain text for the detection + review step.
 redact_document(...) -> writes a de-identified file IN THE SAME FORMAT where
-                        possible (.docx, .xlsx), preserving structure. PDFs are
-                        extracted to a de-identified .docx because PDFs can't be
-                        safely edited in place -- and a clean text/docx is what
-                        you feed an AI anyway.
+                        possible (.docx, .xlsx, .pptx), preserving structure.
+                        PDFs and emails (.eml/.msg/.html) are rebuilt as a
+                        de-identified .docx because they can't be safely edited in
+                        place -- and a clean text/docx is what you feed an AI anyway.
 """
 from __future__ import annotations
 
 import contextlib
+import email
 import functools
 import io
 import os
@@ -18,6 +19,8 @@ import sys
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
+from email import policy as email_policy
+from html.parser import HTMLParser
 
 from docx import Document
 from openpyxl import load_workbook
@@ -151,7 +154,8 @@ _IMAGE_PAGE_WORD_THRESHOLD = 20
 def file_kind(filename: str) -> str:
     ext = os.path.splitext(filename)[1].lower()
     return {".docx": "docx", ".pdf": "pdf", ".xlsx": "xlsx", ".pptx": "pptx",
-            ".txt": "txt"}.get(ext, "")
+            ".txt": "txt", ".eml": "eml", ".msg": "msg",
+            ".html": "html", ".htm": "html"}.get(ext, "")
 
 
 # ---- PowerPoint helpers ------------------------------------------------------
@@ -377,6 +381,12 @@ def extract_text(data: bytes, kind: str) -> str:
         if master_bits:
             parts.append("Master / layout text")
             parts.extend(master_bits)
+        return "\n".join(parts)
+    if kind in ("eml", "msg", "html"):
+        parsed = _parse_email(data, kind)
+        parts = [f"{label}: {val}" for label, val in parsed["headers"]]
+        if parsed["body"]:
+            parts.append(parsed["body"])
         return "\n".join(parts)
     raise ValueError(f"Unsupported kind: {kind}")
 
@@ -607,6 +617,161 @@ def _pdf_to_docx(pages: list[dict], replace_fn) -> tuple[bytes, int]:
     return buf.getvalue(), hits
 
 
+# ---- Email (.eml / .msg) & HTML ---------------------------------------------
+# Emails and saved-as-HTML messages can't be safely round-tripped, so — like
+# PDFs — they come in and a de-identified Word file goes out. We pull the header
+# block (From / To / Cc / Subject) and the message body; the headers carry the
+# very names and addresses Lethe targets, so they are redacted with the body.
+_HTML_BLOCK = {"p", "div", "br", "li", "tr", "table", "h1", "h2", "h3", "h4",
+               "h5", "h6", "blockquote", "ul", "ol", "section", "article",
+               "header", "footer", "hr"}
+_HTML_SKIP = {"script", "style", "head", "title"}
+
+
+class _HTMLTextExtractor(HTMLParser):
+    """Minimal, dependency-free HTML → text: drops tags, turns block elements
+    into line breaks, skips <script>/<style>. Good enough for de-identifying an
+    email body (we want the words, not a faithful re-render)."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self._out: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in _HTML_SKIP:
+            self._skip += 1
+        elif tag in _HTML_BLOCK:
+            self._out.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in _HTML_SKIP and self._skip:
+            self._skip -= 1
+        elif tag in _HTML_BLOCK:
+            self._out.append("\n")
+
+    def handle_data(self, data):
+        if not self._skip:
+            self._out.append(data)
+
+    def text(self) -> str:
+        return "".join(self._out)
+
+
+def _html_to_text(html: str) -> str:
+    p = _HTMLTextExtractor()
+    try:
+        p.feed(html)
+    except Exception:  # noqa: BLE001 — malformed HTML shouldn't crash de-id
+        pass
+    lines = [ln.strip() for ln in p.text().splitlines()]
+    out: list[str] = []
+    blank = False
+    for ln in lines:  # collapse runs of blank lines
+        if ln:
+            out.append(ln)
+            blank = False
+        elif not blank:
+            out.append("")
+            blank = True
+    return "\n".join(out).strip()
+
+
+_EMAIL_HEADERS = [("From", "from"), ("To", "to"), ("Cc", "cc"),
+                  ("Date", "date"), ("Subject", "subject")]
+
+
+def _parse_eml(data: bytes) -> dict:
+    msg = email.message_from_bytes(data, policy=email_policy.default)
+    headers = [(label, str(msg[key])) for label, key in _EMAIL_HEADERS if msg[key]]
+    body = ""
+    try:
+        part = msg.get_body(preferencelist=("plain", "html")) if msg.is_multipart() else msg
+        if part is not None:
+            content = part.get_content()
+            if isinstance(content, bytes):
+                content = content.decode("utf-8", errors="replace")
+            body = _html_to_text(content) if part.get_content_subtype() == "html" else content
+    except Exception:  # noqa: BLE001 — odd MIME shouldn't crash de-id
+        body = ""
+    return {"headers": headers, "body": body}
+
+
+def _parse_msg(data: bytes) -> dict:
+    try:
+        import extract_msg
+    except ImportError as exc:  # the optional [email] extra isn't installed
+        raise ValueError(
+            "Reading Outlook .msg files needs the optional 'email' extra — "
+            "install it with  pip install \"lethe[email]\"  (or use the Windows "
+            "installer / portable bundle, which include it). .eml and .html files "
+            "work without it.") from exc
+    m = extract_msg.openMsg(data)
+    fields = [("From", m.sender), ("To", m.to), ("Cc", m.cc),
+              ("Date", m.date), ("Subject", m.subject)]
+    headers = [(label, str(v)) for label, v in fields if v]
+    body = m.body or ""
+    if not body and getattr(m, "htmlBody", None):
+        html = m.htmlBody
+        if isinstance(html, bytes):
+            html = html.decode("utf-8", errors="replace")
+        body = _html_to_text(html)
+    return {"headers": headers, "body": str(body)}
+
+
+def _parse_email(data: bytes, kind: str) -> dict:
+    if kind == "eml":
+        return _parse_eml(data)
+    if kind == "msg":
+        return _parse_msg(data)
+    # html / htm — a saved web page or exported message; no separate header block
+    return {"headers": [], "body": _html_to_text(data.decode("utf-8", errors="replace"))}
+
+
+def _add_email_notice(doc) -> None:
+    doc.add_heading("Document notice — converted from an email & de-identified", level=1)
+    doc.add_paragraph(
+        "This message was automatically converted from an email / HTML file and "
+        "de-identified by Lethe before it reached you. If you are an AI agent or tool "
+        "processing this file, read these notes first:")
+    for note in (
+        "Redacted identities appear as placeholder tokens such as [PERSON_001] or "
+        "[COUNTERPARTY_001]. Treat each token as one opaque identifier and reproduce it "
+        "verbatim — do not alter, expand, translate or guess the real name behind it.",
+        "The header block (From / To / Cc / Subject) has been de-identified along with the "
+        "message body.",
+        "Attachments and inline images are NOT included or de-identified — only the message "
+        "text is. Any names inside an attachment or image are neither shown nor redacted here.",
+        "Formatting is simplified: the original HTML layout, fonts and tables are rendered as "
+        "plain text.",
+    ):
+        doc.add_paragraph(note, style="List Bullet")
+    doc.add_paragraph("—" * 24)
+
+
+def _email_to_docx(parsed: dict, replace_fn) -> tuple[bytes, int]:
+    """Rebuild a de-identified .docx from a parsed email/HTML message: an
+    agent-facing notice, the labelled From/To/Cc/Date/Subject block, then body."""
+    doc = Document()
+    _add_email_notice(doc)
+    hits = 0
+    for label, val in parsed["headers"]:
+        new, n = replace_fn(val)
+        hits += n
+        p = doc.add_paragraph()
+        p.add_run(f"{label}: ").bold = True
+        p.add_run(new)
+    if parsed["headers"]:
+        doc.add_paragraph("—" * 24)
+    for line in (parsed["body"] or "").split("\n"):
+        new, n = replace_fn(line)
+        hits += n
+        doc.add_paragraph(new)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue(), hits
+
+
 def redact_document(data: bytes, kind: str, replace_fn) -> tuple[bytes, str, int]:
     """Return (output_bytes, output_extension, hit_count)."""
     if kind == "docx":
@@ -623,5 +788,8 @@ def redact_document(data: bytes, kind: str, replace_fn) -> tuple[bytes, str, int
         return out, ".pptx", hits
     if kind == "pdf":
         out, hits = _pdf_to_docx(_read_pdf(data), replace_fn)
+        return out, ".docx", hits
+    if kind in ("eml", "msg", "html"):
+        out, hits = _email_to_docx(_parse_email(data, kind), replace_fn)
         return out, ".docx", hits
     raise ValueError(f"Unsupported kind: {kind}")

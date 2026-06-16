@@ -46,7 +46,8 @@ Lethe restores every real name afterwards.
 
 Lethe sits between you and the AI as a **local privacy gate**:
 
-1. **De-identify** — Drop in a Word, PowerPoint, PDF or Excel file. Lethe finds the people and
+1. **De-identify** — Drop in a Word, PowerPoint, PDF, Excel or email (`.eml` / `.msg` /
+   `.html`) file. Lethe finds the people and
    counterparties (from your dictionary, pattern rules and an optional NLP engine) and
    replaces each with a stable placeholder token — `[PERSON_001]`, `[COUNTERPARTY_001]`.
    You get back a de-identified copy in the **same format**, plus a **Job ID**. The same
@@ -90,6 +91,11 @@ each job is encrypted with a passphrase and stored only on your computer.
   tools can quote against the *original* PDF pages. The file opens with an **agent-facing
   notice header** instructing readers/AIs to cite by source page and keep the
   `[TOKEN_NNN]` placeholders verbatim.
+- **Email ingestion:** drop in an `.eml`, Outlook `.msg` or `.html` message and Lethe
+  returns a de-identified **Word** file — the **From / To / Cc / Subject** header block is
+  redacted along with the body. `.eml`/`.html` use the Python standard library (no extra);
+  `.msg` needs the optional **`[email]`** extra (the Windows installer/portable bundle it).
+  Attachments and inline images aren't included or redacted.
 - **Local OCR for scanned pages:** PDF pages that are scans/figures with no extractable
   text are read with a **fully-local OCR engine** (PDFium + Tesseract via `liteparse` — no
   cloud) and their names detected and redacted like any other text; those pages are marked
@@ -114,15 +120,16 @@ each job is encrypted with a passphrase and stored only on your computer.
 | You are… | Install | Run |
 |---|---|---|
 | **on Windows, non-technical** | download the installer from [Releases](https://github.com/moonlight-lupin/lethe/releases) and run it (per-user, no admin rights) | Start-menu / Desktop shortcut |
-| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp,ocr] @ git+https://github.com/moonlight-lupin/lethe@v1.2.0"` | `lethe` |
-| **lean (no extras, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.2.0"` | `lethe` |
+| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp,ocr,email] @ git+https://github.com/moonlight-lupin/lethe@v1.3.0"` | `lethe` |
+| **lean (no extras, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.3.0"` | `lethe` |
 
 [pipx](https://pipx.pypa.io) installs Lethe into its own isolated environment and puts a
-`lethe` command on your PATH — the cross-platform way to run it on macOS and Linux. Two
+`lethe` command on your PATH — the cross-platform way to run it on macOS and Linux. Three
 optional extras: `[nlp]` adds the Presidio + spaCy suggestion engine and the small English
-model (otherwise Lethe falls back to a built-in regex name-guesser), and `[ocr]` adds
-fully-local OCR so scanned/image PDF pages are read (otherwise they're flagged, not read).
-Either way, running `lethe` opens the app in your browser at `http://localhost:8731`.
+model (otherwise Lethe falls back to a built-in regex name-guesser), `[ocr]` adds
+fully-local OCR so scanned/image PDF pages are read (otherwise they're flagged, not read),
+and `[email]` adds Outlook `.msg` support (`.eml`/`.html` always work; without the extra,
+`.msg` is flagged). Either way, running `lethe` opens the app at `http://localhost:8731`.
 
 > spaCy/Presidio have no Python 3.14 wheels yet, so the `[nlp]` extra requires Python ≤ 3.13.
 
@@ -204,6 +211,9 @@ portable bundle sets it to keep data in-folder). It never goes inside the packag
   *within a single cell* loses that cell's in-line formatting (the redaction itself is
   still correct), and a name buried in a *formula string literal* (e.g.
   `="Acme " & A1`) isn't caught — rare for de-identification.
+- For **emails** (`.eml` / `.msg` / `.html`), only the header block and message text are
+  read — **attachments and inline images are not included or redacted**, and the rich HTML
+  layout is flattened to plain text in the Word output.
 - **The passphrase cannot be recovered.** Lose it and the re-identification mapping for
   that job is gone. Keep the Job ID with the document.
 

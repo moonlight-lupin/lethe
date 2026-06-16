@@ -10,3 +10,8 @@ pdfplumber
 # flagged instead of read.
 liteparse
 cryptography
+# Read Outlook .msg files (an OLE compound format); .eml and .html use the stdlib.
+# This is the optional [email] pip extra — listed here so the Windows installer /
+# portable bundle ship .msg support out of the box (a lean `pipx install` without
+# the extra still reads .eml/.html and just flags .msg).
+extract-msg
