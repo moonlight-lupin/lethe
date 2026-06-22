@@ -8,7 +8,7 @@
 ; Silent deploy for IT:  Lethe-<ver>-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES
 
 #define AppName "Lethe"
-#define AppVer  "1.3.0"
+#define AppVer  "1.3.1"
 #define Pub     "Meng Huey"
 
 [Setup]

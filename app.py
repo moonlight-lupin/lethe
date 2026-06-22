@@ -39,6 +39,7 @@ from lethe import (
     assign_tokens,
     build_replacer,
     build_restorer,
+    clear_pdf_cache,
     detect,
     docio,
     extract_text,
@@ -63,7 +64,7 @@ from lethe import (
 # invert under dark mode (`body.body--dark`, toggled from the header) with no
 # markup changes — exactly the token architecture the two sibling apps use.
 PRIMARY = "#6a4690"  # dusk amethyst — Lethe's accent within the family
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 REPO_URL = "https://github.com/moonlight-lupin/lethe"
 
 # Quasar brand palette — applied per page inside _build_index() (NiceGUI forbids
@@ -419,7 +420,9 @@ review are the real safeguard.
 - **Excel** keeps its charts, formatting and formulas — only cell text is changed. A
   cell that mixes formatting *and* contains a redacted name may lose that cell's fine
   in-line formatting (the redaction is still correct).
-- Nothing leaves this machine — no internet, no cloud.
+- Your documents and the names in them never leave this machine — no telemetry. The only
+  thing that uses the internet is adding an optional language / OCR model in Settings;
+  document processing itself never does.
 """
 
 # GitHub "Octocat" mark (same glyph Pythia's AboutPage uses).
@@ -445,7 +448,9 @@ ABOUT_HTML = f"""
       <p><b>Lethe</b> is a fully-local, reversible document de-identifier. It replaces real
       people and counterparty names with stable tokens (like <code>[PERSON_001]</code>)
       <b>before</b> you send a document to an AI, then restores the real names in the AI's
-      reply. Everything runs on this machine — no cloud, no API key, no internet call.</p>
+      reply. Your documents and the names in them never leave this machine — no cloud, no
+      API key, no telemetry. The only network use is downloading an optional language / OCR
+      model, and only when you explicitly install one.</p>
       <p>It is named after the <i>Lethe</i>, one of the five rivers of the Greek underworld —
       the river of oblivion, whose waters erased the memories of those who drank from them.</p>
       <h4>Detection engine</h4>
@@ -942,6 +947,7 @@ def build_deidentify_panel():
             files.clear()
             manual_entities.clear()
             state["preview_idx"] = 0
+            clear_pdf_cache()   # don't retain any parsed PDF once files are cleared
             render_files.refresh()
             await run_detection()
 
@@ -999,6 +1005,10 @@ def build_deidentify_panel():
                 note.dismiss()
                 ui.notify(f"Couldn't generate the file(s): {exc}", color="negative")
                 return
+            finally:
+                # The de-identified output is built; drop the parsed source PDF(s)
+                # from memory rather than retaining sensitive content between jobs.
+                clear_pdf_cache()
             note.dismiss()
             ref_bytes = _reference_text(job_id, created, sources, token_to_real)
 
@@ -1366,6 +1376,8 @@ def build_restore_panel():
             result.clear()
             if state["data"] is not None:
                 out_bytes, ext, hits = redact_document(state["data"], state["kind"], restore)
+                if state["kind"] == "pdf":
+                    clear_pdf_cache()   # don't retain the parsed PDF after rebuilding
                 base = state["name"].rsplit(".", 1)[0]
                 fname = f"{base}__restored{ext}"
                 with result:
@@ -1531,10 +1543,12 @@ def build_settings_panel():
     with ui.column().classes("w-full gap-5 pt-5"):
         with ui.card().classes("w-full rounded-xl shadow-sm"):
             ui.label("Detection & OCR languages").classes("text-base font-medium")
-            ui.label("English is built in and works fully offline (including OCR of scanned pages). "
-                     "Adding a language installs BOTH its name-detection model and its OCR model, so "
-                     "scanned documents in that script are read too. Your dictionary works in every "
-                     "language regardless. Adding a language needs internet (one-off).").classes(
+            ui.label("English name detection is built in and works fully offline. Scanned-page OCR "
+                     "uses a small local English model — bundled in the Windows app; on a pip install, "
+                     "add it once with the button. Adding another language installs BOTH its "
+                     "name-detection model and its OCR model, so scanned documents in that script are "
+                     "read too. Your dictionary works in every language regardless. Downloading any "
+                     "model needs internet (one-off); nothing else does.").classes(
                 "text-sm text-slate-500")
             if not nlp_suggester.available():
                 ui.label("⚠ The NLP suggestion engine isn't available in this build — only the dictionary "
@@ -1554,6 +1568,14 @@ def build_settings_panel():
                             ui.space()
                             if L["builtin"]:
                                 ui.badge("Built-in", color="teal-7")
+                                # English name detection is bundled, but its OCR model can be
+                                # absent on a lean pip install — we never fetch it silently, so
+                                # offer an explicit one-off download when OCR is available.
+                                if docio.ocr_available() and "eng" not in docio.installed_ocr_languages():
+                                    ui.button("Add OCR model", icon="download",
+                                              on_click=lambda: do_download_eng_ocr()).props(
+                                        "outline no-caps dense").tooltip(
+                                        "Download the English OCR model so scanned English pages are read")
                             elif L["installed"]:
                                 ui.badge("Installed", color="teal-7")
                                 ui.button("Remove", icon="delete",
@@ -1585,6 +1607,20 @@ def build_settings_panel():
                     ui.notify(f"Couldn't install {label} (no internet, or blocked). See the console window.",
                               color="negative", multi_line=True)
                     print(f"\n[language download: {label}] FAILED:\n{log}\n")
+                render.refresh()
+
+            async def do_download_eng_ocr():
+                note = ui.notification("Downloading the English OCR model… one-off",
+                                       spinner=True, timeout=None)
+                ok, log = await run.io_bound(docio.download_ocr_language, ["eng"])
+                note.dismiss()
+                if ok:
+                    ui.notify("English OCR model installed — scanned English pages will now be read",
+                              color="positive")
+                else:
+                    ui.notify("Couldn't download the English OCR model (no internet, or blocked). "
+                              "See the console window.", color="negative", multi_line=True)
+                    print(f"\n[English OCR download] FAILED:\n{log}\n")
                 render.refresh()
 
             async def do_remove(code, label, ocr):

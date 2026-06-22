@@ -7,7 +7,8 @@
 <p align="center">
   A <b>fully-local, reversible</b> document de-identifier — strip the names out of a
   document <i>before</i> you send it to an AI, then put them back into the AI's reply.
-  Nothing ever leaves your machine: no cloud, no API key, no internet call.
+  Your documents and the names in them never leave your machine — no cloud, no API key,
+  no telemetry.
 </p>
 
 <p align="center">
@@ -59,9 +60,13 @@ Lethe sits between you and the AI as a **local privacy gate**:
    real names back in. The reply can even be a *different* document — a summary, redraft
    or translation — because Lethe just maps the tokens back to names.
 
-Everything runs on **your machine**. The names you are protecting are never transmitted
-anywhere — Lethe has no server side, no API key, no internet call. The reversal key for
-each job is encrypted with a passphrase and stored only on your computer.
+Everything runs on **your machine**. Your document content and the names you are
+protecting are **never transmitted anywhere** — Lethe has no server side, no API key and
+no telemetry. The only thing that ever uses the network is downloading an optional
+language or OCR model, and only when you explicitly install one (from Settings, or by
+choosing an install extra); that download carries none of your data, and document
+processing itself never touches the internet. The reversal key for each job is encrypted
+with a passphrase and stored only on your computer.
 
 ## Key features
 
@@ -120,8 +125,8 @@ each job is encrypted with a passphrase and stored only on your computer.
 | You are… | Install | Run |
 |---|---|---|
 | **on Windows, non-technical** | download the installer from [Releases](https://github.com/moonlight-lupin/lethe/releases) and run it (per-user, no admin rights) | Start-menu / Desktop shortcut |
-| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp,ocr,email] @ git+https://github.com/moonlight-lupin/lethe@v1.3.0"` | `lethe` |
-| **lean (no extras, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.3.0"` | `lethe` |
+| **on Windows / macOS / Linux, with Python 3.10–3.13** | `pipx install "lethe[nlp,ocr,email] @ git+https://github.com/moonlight-lupin/lethe@v1.3.1"` | `lethe` |
+| **lean (no extras, smaller)** | `pipx install "git+https://github.com/moonlight-lupin/lethe@v1.3.1"` | `lethe` |
 
 [pipx](https://pipx.pypa.io) installs Lethe into its own isolated environment and puts a
 `lethe` command on your PATH — the cross-platform way to run it on macOS and Linux. Three

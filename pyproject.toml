@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lethe"
-version = "1.3.0"
+version = "1.3.1"
 description = "Lethe — a local, reversible document de-identifier"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
@@ -44,6 +44,11 @@ ocr = [
 # Windows installer / portable bundle ship it so .msg works out of the box.
 email = [
     "extract-msg",
+]
+# Test runner. The suite under tests/ also runs as plain scripts, but pytest
+# discovers the function-based tests (e.g. tests/test_core.py): pytest tests/
+dev = [
+    "pytest",
 ]
 
 [project.scripts]

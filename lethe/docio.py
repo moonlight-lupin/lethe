@@ -78,10 +78,11 @@ def ocr_available() -> bool:
 # The OCR engine reads its language models (`<code>.traineddata`) from a folder
 # under DATA_DIR. English is bundled by the Windows build so OCR works fully
 # offline; extra languages are downloaded on demand from the Settings tab
-# (alongside that language's name-detection model) into this same folder. The
-# engine never reaches the internet at OCR time — it only reads these local files.
-# (A pip/pipx install ships no bundled model; liteparse then fetches English from
-# tessdata_best on first use, after which it too is offline.)
+# (alongside that language's name-detection model) into this same folder. OCR
+# only ever runs against models already present in this folder — it never fetches
+# one over the internet at OCR time (see _merge_ocr). On a pip/pipx install that
+# ships no bundled model, scanned pages are flagged for review until the user
+# explicitly adds a language in Settings, rather than triggering a silent download.
 _TESSDATA_BEST = "https://github.com/tesseract-ocr/tessdata_best/raw/main/{code}.traineddata"
 
 
@@ -204,6 +205,13 @@ def _merge_ocr(data: bytes, pages: list[dict]) -> None:
                if pg["n_images"] > 0 and pg["n_words"] < _IMAGE_PAGE_WORD_THRESHOLD]
     if not (flagged and _HAS_LITEPARSE):
         return
+    # Only OCR with models that are ALREADY on disk. If none are present we return
+    # without OCRing — never letting the engine fetch a model over the internet on
+    # first use, which would silently break the "nothing is transmitted without an
+    # explicit install" promise. Those pages stay hard-flagged (ocr=False) instead.
+    langs = installed_ocr_languages()
+    if not langs:
+        return
     targets = ",".join(str(pg["n"]) for pg in flagged)
     td = tessdata_dir()
     # Models are read from the offline folder, so the engine never reaches the
@@ -211,7 +219,6 @@ def _merge_ocr(data: bytes, pages: list[dict]) -> None:
     # so when the user has added languages we OCR each flagged page once per
     # installed language and keep the highest-confidence reading. English-only
     # (the default) is a single pass. Native Tesseract/PDFium warnings are muted.
-    langs = installed_ocr_languages() or ["eng"]
     best: dict[int, tuple] = {}  # original page number -> (score, text)
     for lang in langs:
         try:
@@ -243,7 +250,12 @@ def _merge_ocr(data: bytes, pages: list[dict]) -> None:
             pg["ocr"] = True
 
 
-@functools.lru_cache(maxsize=4)
+# Cached only for the ONE document currently in flight: a single de-identify pass
+# calls _read_pdf three times (extract → warn → redact) and re-parsing + re-OCR is
+# slow. maxsize=1 means at most one document's raw bytes + extracted text sit in
+# memory; clear_pdf_cache() drops even that once a job is done (a privacy tool
+# shouldn't retain sensitive PDFs longer than it must).
+@functools.lru_cache(maxsize=1)
 def _read_pdf(data: bytes) -> list[dict]:
     """Parse a PDF into per-page content, preserving page boundaries.
 
@@ -251,7 +263,7 @@ def _read_pdf(data: bytes) -> list[dict]:
     `narrative` is the flowing text *outside* any detected table and `tables`
     is a list of grids (list of rows of cell strings). Uses pdfplumber when
     available for reading order + table detection (flat pypdf text otherwise),
-    then OCRs image-based pages when liteparse is installed.
+    then OCRs image-based pages when a local OCR model is installed.
 
     Cached per document (parsing + OCR are called from extract/warn/redact);
     callers must treat the result as read-only.
@@ -259,6 +271,13 @@ def _read_pdf(data: bytes) -> list[dict]:
     pages = _read_pdf_impl(data)
     _merge_ocr(data, pages)
     return pages
+
+
+def clear_pdf_cache() -> None:
+    """Drop the parsed-PDF data held in memory (raw bytes + extracted text).
+    Call this once a job is finished so sensitive document content is not
+    retained in the process between jobs."""
+    _read_pdf.cache_clear()
 
 
 def _read_pdf_impl(data: bytes) -> list[dict]:
@@ -545,16 +564,25 @@ def _text_to_docx(text: str) -> bytes:
     return buf.getvalue()
 
 
-def _add_notice_header(doc) -> None:
-    """Prepend an agent/reader-facing notice: what this document is, and — most
-    importantly — how to cite it (by the ORIGINAL PDF page, via the `Page N`
-    headings, not this Word file's own pagination)."""
+def _add_notice_header(doc, pages: list[dict] | None = None) -> None:
+    """Prepend an agent/reader-facing notice: what this document is, how to cite
+    it (by the ORIGINAL PDF page via the `Page N` headings, not this Word file's
+    pagination), and — conditional on what actually happened — which pages were
+    recovered by OCR and which image-only pages could not be read at all."""
+    pages = pages or []
+    ocr_pages = [pg["n"] for pg in pages if pg.get("ocr")]
+    unread_pages = [pg["n"] for pg in pages if not pg.get("ocr")
+                    and pg.get("n_images", 0) > 0 and pg.get("n_words", 0) < _IMAGE_PAGE_WORD_THRESHOLD]
+
+    def _fmt(nums: list[int]) -> str:
+        return ", ".join(str(n) for n in nums)
+
     doc.add_heading("Document notice — converted from PDF & de-identified", level=1)
     doc.add_paragraph(
         "This document was automatically converted from a PDF and de-identified by "
         "Lethe before it reached you. If you are an AI agent or tool processing this "
         "file, read these notes before quoting or analysing it:")
-    for note in (
+    notes = [
         "CITE BY ORIGINAL PDF PAGE. The body below is divided by “Page N” headings, "
         "where N is the page number in the source PDF. When you quote, reference or "
         "footnote anything, use that source page number — NOT this Word document's own "
@@ -562,12 +590,29 @@ def _add_notice_header(doc) -> None:
         "Redacted identities appear as placeholder tokens such as [PERSON_001] or "
         "[COUNTERPARTY_001]. Treat each token as one opaque identifier and reproduce it "
         "verbatim — do not alter, expand, translate or guess the real name behind it.",
-        "Some content may be missing: text inside images, charts, logos or scanned pages "
-        "is not captured (there is no OCR), so any names or figures there are neither "
-        "shown nor redacted here.",
+    ]
+    if ocr_pages:
+        notes.append(
+            f"Page(s) {_fmt(ocr_pages)} were image-based (scans/figures); their text was "
+            "recovered with local OCR and de-identified like the rest. OCR is not perfect — "
+            "review those pages against the original PDF.")
+    if unread_pages:
+        notes.append(
+            f"Page(s) {_fmt(unread_pages)} are image-based and could NOT be read (no OCR text "
+            "was recovered), so any names or figures on them are NOT redacted here — review "
+            "them in the original PDF.")
+    if ocr_pages or unread_pages:
+        notes.append(
+            "Separately, text baked into images, charts or logos on otherwise-text pages is "
+            "not captured, so any names there are neither shown nor redacted.")
+    else:
+        notes.append(
+            "Text baked into images, charts or logos is not captured (only the page's real "
+            "text is read), so any names rendered as pixels are neither shown nor redacted.")
+    notes.append(
         "Tables were reconstructed from the PDF; fine formatting and exact positioning "
-        "may differ from the original.",
-    ):
+        "may differ from the original.")
+    for note in notes:
         doc.add_paragraph(note, style="List Bullet")
     doc.add_paragraph("—" * 24)
 
@@ -581,7 +626,7 @@ def _pdf_to_docx(pages: list[dict], replace_fn) -> tuple[bytes, int]:
     `Page N` anchors let downstream tools/agents quote against the original PDF
     pages."""
     doc = Document()
-    _add_notice_header(doc)
+    _add_notice_header(doc, pages)
 
     hits = 0
     for idx, pg in enumerate(pages):

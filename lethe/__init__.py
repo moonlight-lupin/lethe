@@ -50,6 +50,7 @@ from .core import (  # noqa: E402
     detect,
 )
 from .docio import (  # noqa: E402
+    clear_pdf_cache,
     download_ocr_language,
     extract_text,
     file_kind,
@@ -76,8 +77,8 @@ __all__ = [
     "Entity", "assign_tokens", "build_replacer", "build_restorer", "detect",
     "_whole_word_regex",
     # document I/O
-    "extract_text", "file_kind", "ocr_available", "pdf_warnings", "read_xlsx_grid",
-    "redact_document",
+    "clear_pdf_cache", "extract_text", "file_kind", "ocr_available", "pdf_warnings",
+    "read_xlsx_grid", "redact_document",
     # offline OCR language data
     "download_ocr_language", "installed_ocr_languages", "remove_ocr_language",
     # entity dictionary

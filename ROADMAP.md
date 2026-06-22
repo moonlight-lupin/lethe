@@ -1,34 +1,38 @@
 # Lethe — Roadmap
 
-Shipped in **v1.0.0**: Word/PDF/Excel de-identification with an entity dictionary,
-Presidio+spaCy suggestions, encrypted reversible vault, custom token types,
-table-aware PDF→Word with `Page N` anchors, xlsx OOXML-surgery redaction,
-cross-platform pipx install + Windows installer.
+## Shipped
 
-## Done on main (lands in v1.1)
+- **v1.0.0** — Word/PDF/Excel de-identification with an entity dictionary,
+  Presidio+spaCy suggestions, encrypted reversible vault, custom token types,
+  table-aware PDF→Word with `Page N` anchors, xlsx OOXML-surgery redaction,
+  cross-platform pipx install + Windows installer.
 
-- **PowerPoint (.pptx) support** — format-preserving via `python-pptx`: slide
-  text (incl. grouped shapes), tables, speaker notes and master/layout text are
-  redacted and a working `.pptx` comes back. Text inside charts/SmartArt is out
-  of scope (documented), as is text in images, like everywhere else.
-
-- **Local OCR for scanned / image-based PDF pages** — via
+- **v1.1.0** — **PowerPoint (.pptx)** support (format-preserving via
+  `python-pptx`: slide text incl. grouped shapes, tables, speaker notes,
+  master/layout); **local OCR for scanned/image PDF pages** via
   [run-llama/liteparse](https://github.com/run-llama/liteparse) (PDFium +
-  bundled Tesseract, Apache-2.0, ~16 MB, fully offline). Hybrid as planned:
-  pdfplumber keeps native text + table grids; liteparse selectively OCRs only
-  the image-based pages (`target_pages`), whose recovered text then flows
-  through normal detection/redaction and is marked "review carefully" in the
-  UI. Optional `lethe[ocr]` extra; included in requirements.txt so the portable
-  bundle and dev installs get it. Spike findings: all test names recovered
-  verbatim from pixel-only pages, ~0.26 s/page selective, Windows wheel on 3.13.
+  Tesseract, Apache-2.0, fully offline) — pdfplumber keeps native text + table
+  grids, liteparse selectively OCRs only image-based pages and the recovered
+  text flows through normal detection/redaction, marked "review carefully".
+  Optional `lethe[ocr]` extra; bundled in the Windows build.
+
+- **v1.2.0** — **Restore tab** (manual re-identify for documents tokenised
+  outside Lethe, with explicit per-token Type + Save controls; doubles as a
+  template filler); **Settings → Files & folders** (locate/open the data and
+  program folders).
+
+- **v1.3.0** — **Email ingestion** (`.eml` / Outlook `.msg` / `.html` → a
+  de-identified Word file; the From/To/Cc/Subject header block is redacted with
+  the body). `.eml`/`.html` use the stdlib; `.msg` is the optional `lethe[email]`
+  extra, bundled in the Windows build.
 
 ## Later / undecided
 
-- **Best-effort ingest of other formats** (HTML, EPUB, Outlook `.msg`) behind an
-  optional extra — one-way: de-identified Markdown/Word out, not the original
-  format back. [microsoft/markitdown](https://github.com/microsoft/markitdown)
-  (MIT) is the likely engine; its Azure OCR paths must stay disabled (cloud
-  calls violate the local-only promise). Clearly labelled as one-way.
+- **More one-way ingest** (EPUB, and other formats not yet covered) — de-identified
+  Word/Markdown out, not the original format back. The native `.eml`/`.msg`/`.html`
+  path covers email; [microsoft/markitdown](https://github.com/microsoft/markitdown)
+  (MIT) is a candidate engine for the rest, with its Azure OCR paths kept disabled
+  (cloud calls would violate the local-only promise).
 
 - **Machine-readable page-map sidecar** for PDF conversions — a small JSON
   mapping text offsets → source PDF page, so downstream tools can cite exact
