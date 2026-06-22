@@ -97,7 +97,73 @@ def test_vault_roundtrip_and_wrong_passphrase():
     vault.delete_job(jid)
 
 
-# ---- Excel: BOTH shared-string and inline-string cells are redacted ---------
+# ---- Excel: shared-string cells (a separate xl/sharedStrings.xml, the <si>
+# path, which is what Excel itself writes — openpyxl now emits inline strings) -
+def _shared_string_xlsx(values):
+    """Minimal .xlsx with a real shared-strings table: row-1 cells (A1, B1, …)
+    reference string indices via t='s', exercising _redact_xlsx's <si> path."""
+    sst = "".join(f"<si><t>{v}</t></si>" for v in values)
+    cells = "".join(
+        f'<c r="{chr(65 + i)}1" t="s"><v>{i}</v></c>' for i in range(len(values)))
+    R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    parts = {
+        "[Content_Types].xml":
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+            '</Types>',
+        "_rels/.rels":
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'<Relationship Id="rId1" Type="{R}/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>',
+        "xl/workbook.xml":
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            f'xmlns:r="{R}"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>',
+        "xl/_rels/workbook.xml.rels":
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'<Relationship Id="rId1" Type="{R}/worksheet" Target="worksheets/sheet1.xml"/>'
+            f'<Relationship Id="rId2" Type="{R}/sharedStrings" Target="sharedStrings.xml"/>'
+            '</Relationships>',
+        "xl/sharedStrings.xml":
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            f'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            f'count="{len(values)}" uniqueCount="{len(values)}">{sst}</sst>',
+        "xl/worksheets/sheet1.xml":
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            f'<sheetData><row r="1">{cells}</row></sheetData></worksheet>',
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, content in parts.items():
+            z.writestr(name, content)
+    return buf.getvalue()
+
+
+def test_xlsx_shared_strings():
+    data = _shared_string_xlsx(["John Smith", "Acme Capital Partners"])
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        assert "xl/sharedStrings.xml" in z.namelist()   # the <si> path, for real
+    ents = [Entity("John Smith", "PERSON", []),
+            Entity("Acme Capital Partners", "COUNTERPARTY", [])]
+    text = extract_text(data, "xlsx")
+    assert "John Smith" in text and "Acme Capital Partners" in text, "shared strings unreadable"
+    repl, _ = build_replacer(assign_tokens(detect(text, ents, enable_suggestions=False)))
+    out, ext, hits = redact_document(data, "xlsx", repl)
+    out_text = extract_text(out, "xlsx")
+    assert ext == ".xlsx" and hits >= 2
+    assert "John Smith" not in out_text and "Acme Capital Partners" not in out_text
+    assert "[PERSON_001]" in out_text and "[COUNTERPARTY_001]" in out_text
+
+
+# ---- Excel: inline-string cells (t='inlineStr', which openpyxl now emits) ----
 def _inline_string_xlsx(cells):
     """Build a minimal valid .xlsx whose cells are inline strings (t='inlineStr'),
     which openpyxl never emits — exercising _redact_xlsx's <is> path."""
@@ -180,10 +246,17 @@ def test_pdf_notice_is_conditional():
 # ---- OCR never fires (or downloads) when no model is present locally --------
 def test_ocr_skips_without_local_model():
     from lethe import docio
-    assert docio.installed_ocr_languages() == [], "isolated data dir should have no OCR model"
-    pages = [{"n": 1, "narrative": "", "tables": [], "n_words": 0, "n_images": 1, "ocr": False}]
-    docio._merge_ocr(b"%PDF-not-real", pages)   # must be a no-op: no model → no OCR, no fetch
-    assert pages[0]["ocr"] is False and pages[0]["narrative"] == ""
+    # Simulate "no OCR model on disk" directly so the test is hermetic regardless
+    # of what other tests have downloaded into the shared data dir.
+    orig = docio.installed_ocr_languages
+    docio.installed_ocr_languages = lambda: []
+    try:
+        pages = [{"n": 1, "narrative": "", "tables": [], "n_words": 0,
+                  "n_images": 1, "ocr": False}]
+        docio._merge_ocr(b"%PDF-not-real", pages)   # no model → no OCR, no fetch, no-op
+        assert pages[0]["ocr"] is False and pages[0]["narrative"] == ""
+    finally:
+        docio.installed_ocr_languages = orig
 
 
 if __name__ == "__main__":

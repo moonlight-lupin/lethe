@@ -5,6 +5,13 @@
 <h1 align="center">Lethe</h1>
 
 <p align="center">
+  <a href="https://github.com/moonlight-lupin/lethe/actions/workflows/ci.yml"><img
+    src="https://github.com/moonlight-lupin/lethe/actions/workflows/ci.yml/badge.svg"
+    alt="CI status" /></a>
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0" />
+</p>
+
+<p align="center">
   A <b>fully-local, reversible</b> document de-identifier — strip the names out of a
   document <i>before</i> you send it to an AI, then put them back into the AI's reply.
   Your documents and the names in them never leave your machine — no cloud, no API key,
@@ -71,7 +78,8 @@ with a passphrase and stored only on your computer.
 ## Key features
 
 - **Fully local & reversible** — de-identify before the AI sees a document,
-  re-identify the AI's reply afterwards. No internet, no telemetry.
+  re-identify the AI's reply afterwards. No internet during document processing; no
+  telemetry.
 - **Restore tokens from anywhere:** a **Restore** tab re-identifies documents that were
   tokenised *outside* Lethe — no Job ID needed. Scan for `[bracketed]` placeholders, fill
   in the real names, and rebuild the file in the same format (also handy as a plain

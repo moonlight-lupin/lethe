@@ -1,0 +1,39 @@
+name: CI
+
+# Runs the test suite on every push to main and on every pull request, on both
+# Linux and Windows. Installs the base package plus the [dev] extra (pytest) —
+# the optional [nlp]/[ocr]/[email] engines are exercised by unit-level tests, so
+# CI stays fast and dependency-light. The OCR round-trip test self-skips when
+# liteparse isn't installed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      # Keep all on-disk state (dictionary, vault) inside the runner's temp dir.
+      LETHE_DATA_DIR: ${{ runner.temp }}/lethe-ci
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Upgrade build tooling
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install (base + dev)
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run tests
+        run: python -m pytest tests/ -q
