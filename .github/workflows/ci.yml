@@ -19,9 +19,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-    env:
-      # Keep all on-disk state (dictionary, vault) inside the runner's temp dir.
-      LETHE_DATA_DIR: ${{ runner.temp }}/lethe-ci
     steps:
       - uses: actions/checkout@v5
 
@@ -36,4 +33,7 @@ jobs:
         run: python -m pip install -e ".[dev]"
 
       - name: Run tests
+        # Keep all on-disk state (dictionary, vault) inside the runner's temp dir.
+        env:
+          LETHE_DATA_DIR: ${{ runner.temp }}/lethe-ci
         run: python -m pytest tests/ -q
